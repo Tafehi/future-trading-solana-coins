@@ -103,3 +103,6 @@ repo became `future-trading-kucoins` (Hyperliquid -> KuCoin); this one is `futur
   keeps the last `.env` and `statusCheck.sh` warns. Check `old-secret-name`; `audit/` skipped by `scripts/checks.py`.
 - Incident on 2026-11-16: copying the old futcoins bucket into this bucket also copied the OLD `host/` files; fixed by
   copying this repo's three host files back (the box syncs `host/` every 5 min). `host/` belongs to Terraform.
+- **Wallet history as Parquet (user):** new `jup_episodes` rows (the Jupiter trades grading uses) are copied at each
+  flush to `futures/solana-bot/episodes`; the last exported id lives in `meta` (no repeats, no gaps after a restart).
+  `record/episodes_export.py`, `test_episodes_export.py` (2), 2 mutants; `collect_evidence.sh` downloads it.

@@ -35,6 +35,7 @@ from app.db import jobclock, meta, migrations, store
 from app.jobs import jupiter, jupiter_history
 from app.notifications import digest, messages
 from app.notifications.telegram import TelegramNotifier
+from app.record import episodes_export
 from app.record.recorder import Recorder
 from app.trading import ledger, risk, shadow
 from app.trading.copier import Copier
@@ -197,6 +198,7 @@ class Bot:
             if await jobclock.claim("grades_snapshot", interval_s=86400):
                 await self.record_grades(now)
             if self.recorder.due(now):
+                await episodes_export.export_new(self.recorder)  # Jupiter wallet history (2026-11-16)
                 await self.record_bot_positions()
                 await self.record_shadow_positions()
                 self.recorder.flush(now=now)

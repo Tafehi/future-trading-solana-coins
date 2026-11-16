@@ -92,6 +92,10 @@ mut app/tools/evidence_report.py 'SUM(net_pnl > 0) AS won' 'SUM(net_pnl >= -100)
 mut app/main.py 'add_rows("solana-bot/grades"' 'add_rows("grades"' 'solana_bot_folders'
 mut app/data/market.py 'coins = sorted(JUPITER_COINS)' 'coins = sorted(JUPITER_COINS)[1:]' 'jupiter_coins_map'
 
+# 2026-11-16: Jupiter wallet history exported once each
+mut app/record/episodes_export.py 'WHERE id > ? ORDER BY id' 'WHERE id >= ? ORDER BY id' 'exported_once'
+mut app/record/episodes_export.py '            await meta.put(conn, KEY, max(int(r["id"]) for r in rows))' '            pass' 'exported_once'
+
 rm -f "$backup"
 echo "mutants survived: $survived"
 exit "$survived"

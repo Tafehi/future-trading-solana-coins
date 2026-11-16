@@ -93,7 +93,7 @@ say "shared bucket futures/ (listing + the last $DAYS days of this bot's solana-
 run "$OUT/listing/futures.txt" "$AWS" s3 ls "s3://$SHARED/futures/" --recursive --region "$REGION"
 for i in $(seq 0 $((DAYS - 1))); do
   D="$(date -u -v-"${i}"d +%F 2>/dev/null || date -u -d "-${i} day" +%F)"
-  for ds in solana-bot/grades solana-bot/positions solana-bot/shadow; do
+  for ds in solana-bot/grades solana-bot/positions solana-bot/shadow solana-bot/episodes; do
     "$AWS" s3 cp "s3://$SHARED/futures/$ds/day=$D/" "$OUT/parquet/$ds/day=$D/" --recursive --region "$REGION" \
       --only-show-errors >/dev/null 2>&1 || true
   done
