@@ -1,0 +1,30 @@
+{
+ "note": "Trimmed from real mainnet Jupiter Perps transactions (2026-11-13): only the perps program's inner instructions (the event bytes) and its program id are kept; account lists and signatures removed (DEBUG D-6).",
+ "tx": {
+  "blockTime": 1794578290,
+  "meta": {
+   "err": null,
+   "innerInstructions": [
+    {
+     "index": 5,
+     "instructions": [
+      {
+       "programIdIndex": 0,
+       "data": "zDJAuzRrMAF6NEvYj7Fk8GCuJeTKvBcKZJCHwjVSWQ3DqrgPiRrp14Lv69dWPYovEJNJMXvB8zVRsn4GkpkL5v3o8i3nCydMeqmEK1hgfemBZHUPuFCqz2jbr8sFZAm4yhvBf8hHwNyTa377GRpRkPbaxJ5LWWJ4P6hWkYk2yMcut14iMJ7nr4jiGBcBxP8oxYLr8ShtNRJkmk7qAWoMEpXL186rdj6bF8UcbGJ28XrYCeobXEAXRResd1WWkhHSvYZD2XDev6RK9gJqYJP5tR6TwCs4BFR3q9N3sx6FvTgkegduPEEKkfwPMdRnj7QKt9QRCkPzsFtF28Znh6C3LxFLYLq9CCyJCK6zwYeRHiFYRy2xEXvBLf6n2pSb6ho7vF7UCe3DARXCYcrk9JpK7TPoNwJM4dVvSAg93552EMjWQ8tVhCmzw19hGisUCXs6GhzftKtwkvEW5wLm25feNydJChYDMTUByXqpoRr7AEPvZ9appcJjSetrATnF"
+      }
+     ]
+    }
+   ]
+  },
+  "transaction": {
+   "message": {
+    "accountKeys": [
+     "PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu"
+    ]
+   },
+   "signatures": [
+    "fixture-signature-1"
+   ]
+  }
+ }
+}

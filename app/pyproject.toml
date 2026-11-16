@@ -1,0 +1,37 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+# "S" is the bandit security ruleset (S608 = string-built SQL). Copied from ai-kucoin-future.
+select = ["E", "F", "W", "I", "S"]
+ignore = [
+    "S101",  # assert is how pytest works; tests are the only place it appears
+    "S110",  # try-except-pass, used for optional features
+    "S112",  # try-except-continue
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests deliberately use hardcoded fake addresses and keys.
+"tests/*" = ["S105", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+# `auto` rather than a `@pytest.mark.asyncio` on every coroutine test: a forgotten marker makes an
+# async test **silently pass without running**, because pytest collects the coroutine, never awaits
+# it, and reports success. A test that has never executed is worse than a missing test.
+asyncio_mode = "auto"
+# Set explicitly: pytest-asyncio 1.4.1 (2026-10-28) warns at start-up when it is unset, and the line below turns that
+# warning into an INTERNALERROR that stops every test (DEBUG D-27). "function" = each test gets its own loop, as
+# each test already gets its own database (`fresh_db`).
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["error::DeprecationWarning"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true

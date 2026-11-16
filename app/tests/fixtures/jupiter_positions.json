@@ -1,0 +1,17 @@
+{
+ "note": "Real Jupiter Perps Position accounts (full 216 bytes), mainnet, fetched 2026-11-13 via getProgramAccounts. Public chain data. Position account addresses replaced by placeholders (DEBUG D-6).",
+ "accounts": [
+  {
+   "pubkey": "fixture-position-1",
+   "data": "qryP5HpA99DP2buggSgFo2aT89zGPbOibl9OGnOKItmDjWlALOCrmj4eJHPHNAZU64cpADUVHEAr0OPJfLQkSIbnIDSzC038Z1ld2EbAB/JolvKu0xuntV/RLMwVjgsAep2P6Ea2n+lnWV3YRsAH8miW8q7TG6e1X9EszBWOCwB6nY/oRraf6fJG9moAAAAA8kb2agAAAAABnhfdBAAAAADE7MITAAAAAN7q+QEAAAAAAAAAAAAAAADnj3hAAAAAAAAAAAAAAAAAg94t8gAAAAD/AAAAAAAA"
+  },
+  {
+   "pubkey": "fixture-position-2",
+   "data": "qryP5HpA99CisOE9i9YGYdKMGVNAkRxhPNGDcjFyUoasNLF5JtYyAD4eJHPHNAZU64cpADUVHEAr0OPJfLQkSIbnIDSzC038Z1ld2EbAB/JolvKu0xuntV/RLMwVjgsAep2P6Ea2n+lnWV3YRsAH8miW8q7TG6e1X9EszBWOCwB6nY/oRraf6ceD9moAAAAAdKr2agAAAAABs8K1BAAAAAAG7eUdAAAAAPqvoAEAAAAAAAAAAAAAAAAFQnpAAAAAAAAAAAAAAAAArLpbegEAAAD/AAAAAAAA"
+  },
+  {
+   "pubkey": "fixture-position-3",
+   "data": "qryP5HpA99BcUau9XbxeKVh3Bmk573LxBmmeHWlPWhnkBd3kjwbMAj4eJHPHNAZU64cpADUVHEAr0OPJfLQkSIbnIDSzC038Z1ld2EbAB/JolvKu0xuntV/RLMwVjgsAep2P6Ea2n+ne6As0E6LTEIBia5JsOK80vtGG2zaOl386v0vVRUSabdpJ9moAAAAA2kv2agAAAAACbd7aBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB9lAsPAAAAAAAAAAAAAAAAAAAAAAAAAAD/AAAAAAAA"
+  }
+ ]
+}

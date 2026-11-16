@@ -1,0 +1,46 @@
+# Non-secret settings for the solana-future-coin bot (Jupiter Perps traders copied onto KuCoin). The environment (from the Kucoin-bot secret) wins over this file;
+# this file wins over the defaults in app/config.py. NEVER put a key, token or URL with a key in here
+# (app/tests/test_config.py fails the build if you do).
+
+# ── Mode and money ───────────────────────────────────────────────────────────────────────────────
+MODE = "paper"                 # "live" only after `python -m app.tools.golive_check` passes (plan: go-live)
+PAPER_START_BALANCE = 10000.0  # user, 2026-11-13
+PAPER_EPOCH = "1"              # change to start a fresh paper account
+LIVE_START_BALANCE = 0.0       # set to the real USDT in the futures account when going live
+KUCOIN_KEY_DEDICATED = false   # GO-LIVE BLOCKER (B-3): true only when THIS bot has its own KuCoin sub-account + key
+
+# ── Sizing ───────────────────────────────────────────────────────────────────────────────────────
+LEVERAGE = 3                   # isolated; ai-kucoin-future: 10x lost 50-65%, 3x was the safest that still made money
+POSITION_FRACTION = 0.06       # margin per full-weight trade = 6% of equity
+MAX_OPEN_POSITIONS = 10
+
+# ── Exits (ai-kucoin-future E-4; may be overfitted, BUG.md B-6) ─────────────────────────────────
+STOP_LOSS_PRICE_PCT = 6.0
+TRAIL_ACTIVATE_PRICE_PCT = 6.0
+TRAIL_GIVEBACK_PRICE_PCT = 3.0
+MAX_HOLD_HOURS = 72.0
+
+# ── Market gate ──────────────────────────────────────────────────────────────────────────────────
+MAX_SPREAD_BPS = 15.0
+MAX_SLIPPAGE_BPS = 30.0
+MAX_ENTRY_DRIFT_PCT = 1.5
+MIN_TURNOVER_USD = 500000.0
+PAPER_FILL_DELAY_S = 1.0
+
+# ── Wallets ──────────────────────────────────────────────────────────────────────────────────────
+JUPITER_GRADE_MINUTES = 5.0    # Jupiter re-grade + re-pick (user, 2026-11-13; was hourly)
+JUPITER_ENABLED = true         # the only source; does nothing until SOLANA_RPC_URL is in the Kucoin-bot secret
+JUPITER_POLL_SECONDS = 60.0
+
+# ── More wallets (user, 2026-11-13: items 1-5) ───────────────────────────────────────────────────
+COPY_SILVER = true             # item 5: SILVER wallets copied at a small size
+SILVER_MAX_WEIGHT = 3          # item 5: at most 17% of a full trade
+MAX_TRACKED_SILVER = 10
+SHADOW_ENABLED = true          # item 4: rank wallets by our own shadow copies
+SHADOW_MIN_TRADES = 5
+JUPITER_HISTORY_ENABLED = true # item 1: Jupiter history from the chain (graded on day one)
+JUPITER_HISTORY_CALLS_PER_DAY = 20000  # Chainstack calls a day for item 1 (plan shared with Pump-fun-S1/S3)
+
+# ── Telegram ─────────────────────────────────────────────────────────────────────────────────────
+BOT_NAME = "Jupiter-KuCoin"    # both bots post to one chat (split 2026-11-14): "[PAPER] Jupiter-KuCoin"
+DIGEST_MINUTES = 15            # user, 2026-11-13: a report every 15 min, only when something was traded

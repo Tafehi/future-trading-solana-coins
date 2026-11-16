@@ -1,0 +1,92 @@
+{
+ "note": "Trimmed from real mainnet Jupiter Perps transactions (2026-11-13): only the perps program's inner instructions (the event bytes) and its program id are kept; account lists and signatures removed (DEBUG D-6). Third one FAILED on chain (err 3012): no events.",
+ "txs": [
+  {
+   "blockTime": 1794578752,
+   "meta": {
+    "err": null,
+    "innerInstructions": [
+     {
+      "index": 5,
+      "instructions": [
+       {
+        "programIdIndex": 0,
+        "data": "zDJAuzRrMAF6NEvYj7Fk8HE4qnefYRUcPt6DWRfMMzo7SU5iU4oAV2uGUnMrAhoXjDUgu8NX2f5pcuV3wpE8TFw91PwQ4fHZjUmdwJwC8tYv9QgevqNsNejqCUoGHgpGHUebSMYPxLZapXXwb5N93i7hNog7nY9sax9SNTYijEj7ni5cBZ9duS6ts12Nj2313RidfzYn1fFW5FLaGvnVYVdADagus1qpz7gCvDdgMWhnUYNt5i1kcrprRoiAx95QNVPWgsA62bRU1MCM44SZYwL9gcqbjjo9QCqpfCxScQ5CG79GCJUZwhMPwuh4YkzXcBfVBhjRFkEW2qqZWpCMWztRQtJaJ14bDDtXsRzNe7hC1tu9UenK4HVGGAHgX97oVxyz5NC5ddsxMHC6wP59bk55QfeD7zFvqG242edCjZx8mfTA9MavPaXkv6FvSsjweSMgujBmqBeczeogmP3SUd5UWvpisba5tDsKba6gpfgkc2gsPdy2SxC1uexP"
+       }
+      ]
+     }
+    ]
+   },
+   "transaction": {
+    "message": {
+     "accountKeys": [
+      "PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu"
+     ]
+    },
+    "signatures": [
+     "fixture-signature-2"
+    ]
+   }
+  },
+  {
+   "blockTime": 1794578692,
+   "meta": {
+    "err": null,
+    "innerInstructions": [
+     {
+      "index": 9,
+      "instructions": [
+       {
+        "programIdIndex": 0,
+        "data": "zDJAuzRrMAF6NEvYj7Fk8FtFZJWpeivSTcox84qD9jYcdmo37527UPFynha89H4JgNjYJ67yhDUgJfnZrSmrBGrehHJCzreddVNunLDx63GfAC1D5xSAG6m8YN4yRp364WFEuhNEANrzicKyapdFKj4enRFPnWicexJgCWqg8Xyx588m3FnxAiNWyf2gL67pTcMhxdf6Hvi21jxyvdie9jdw5J4VyrHdvByBXFbJJSQBRSmqZNaby7yzmPahMxdjPCerEPaGJoszjdR89ctRbXEdZUhvpZSTVAJTHu3nhjezE8LSatvUG9AaNDXFk89zGEjVFaayqMURytTUGBKaaRpoBRAbiFRQA2Nu9QH2n76vStbV3D6mYBttAX4WjEqydgTLv7HHsEe5VRq3ejVZb8qdZx1yqBC86p7UPDom1oTW7spKvCnTGUTvHbb3ZrNUtMz4Z79rKJGChvJDWxhKkDuvfBmfcwdSdrsxUmS2AR1wo3yXyJeNFBi16xZV"
+       }
+      ]
+     },
+     {
+      "index": 10,
+      "instructions": [
+       {
+        "programIdIndex": 0,
+        "data": "q7FXAAedM1BLrviLPdEuWogeFKvyw5VcgAmmBKzZcAdsaheHAk7cKyyKexhJJfK8oMm1cm87iubY9Zv35AzscbszvAfbXDigdhZAor3izPKMYHX2y9UQWEcjK6XPfD3PEgSfF5XYJPqFkG1JzF61ie1fzVALbdS3so3WhBJHWt5ScZqBn61FrN6L3nkkTEFUQq8gkuMoUn9722p8e9kXNAE74kjHkrFw5YtreDYra6FHWHoBfgwBCFpjKKZoYDLZLBNyMkDGfHJiKD9FnYHwgFsrNQspVb4gpYJXTAH"
+       }
+      ]
+     }
+    ]
+   },
+   "transaction": {
+    "message": {
+     "accountKeys": [
+      "PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu"
+     ]
+    },
+    "signatures": [
+     "fixture-signature-3"
+    ]
+   }
+  },
+  {
+   "blockTime": 1794578430,
+   "meta": {
+    "err": {
+     "InstructionError": [
+      5,
+      {
+       "Custom": 3012
+      }
+     ]
+    },
+    "innerInstructions": []
+   },
+   "transaction": {
+    "message": {
+     "accountKeys": [
+      "PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu"
+     ]
+    },
+    "signatures": [
+     "fixture-signature-4"
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,225 @@
+# Deploy: lint and tests, then infrastructure, then the image. Pattern from Pump-fun-S1 / ai-kucoin-future.
+#
+# - OIDC roles from Tafehi/aws-foundation (gha-aws-foundation-apply). The repo must be in aws-foundation's
+#   github_repos + projects and APPLIED by the user first (.claude/docs/04-deploy.md).
+# - No job sets `environment:` — the roles trust only `ref:refs/heads/main` and pull requests (scripts/checks.py).
+# - Infrastructure runs BEFORE the image: the first deploy must create the ECR repository it pushes to. The box pulls
+#   :latest every 5 minutes, so an image that lands after the box is picked up by itself.
+# - CI never runs a command on the box (no ssm:SendCommand); the box pulls everything with systemd timers.
+
+name: Deploy — lint, test, infrastructure, image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_ACCOUNT_ID: '267850879774'
+  AWS_REGION: eu-central-1
+  DEPLOY_ROLE: arn:aws:iam::267850879774:role/gha-aws-foundation-apply
+  STATE_BUCKET: terraform-state-267850879774
+  STATE_KEY: future-trading-solana-coins/terraform.tfstate
+  PREFIX: solana-future-coin
+  TF_VAR_aws_region: eu-central-1
+
+jobs:
+  test:
+    name: lint and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.12'
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
+        with:
+          terraform_version: '1.10'
+          terraform_wrapper: false
+      - name: Install
+        run: python -m pip install -q -r app/requirements-dev.txt
+      - name: Repo checks (and proof each can fail)
+        run: python scripts/checks.py --self-test && python scripts/checks.py
+      - name: ruff
+        run: cd app && ruff check . && ruff format --check .
+      - name: mypy
+        run: cd app && mypy . --ignore-missing-imports
+      - name: pytest (offline)
+        run: python -m pytest app/tests -q
+      - name: Mutants (every key rule's test must go red when the rule breaks)
+        run: PY=python scripts/mutants.sh
+      - name: The settings file boots in paper; live without a passphrase refuses
+        run: |
+          SETTINGS_FILE=app/settings.toml python -c "from app.config import settings; assert settings.mode == 'paper'"
+          if MODE=live KUCOIN_API_KEY=k KUCOIN_API_SECRET=s LIVE_START_BALANCE=1 python -c "import app.config" 2>/dev/null; then
+            echo "::error::MODE=live booted without KUCOIN_API_PASSPHRASE"; exit 1
+          fi
+      - name: Shell scripts
+        run: |
+          bash -n hostSetup.sh statusCheck.sh infra/user_data.sh scripts/mutants.sh scripts/verify_clone.sh scripts/collect_evidence.sh precommit.sh
+          shellcheck -S warning hostSetup.sh statusCheck.sh infra/user_data.sh scripts/mutants.sh scripts/verify_clone.sh scripts/collect_evidence.sh precommit.sh
+      - name: terraform fmt and validate (no backend)
+        run: |
+          terraform -chdir=infra fmt -check -recursive
+          terraform -chdir=infra init -backend=false -input=false >/dev/null
+          terraform -chdir=infra validate
+
+  infrastructure:
+    name: terraform apply
+    needs: test
+    runs-on: ubuntu-latest
+    # The OIDC session lasts 1 hour; a job past that cannot release the state lock (Pump-fun-S1 DEBUG D-5).
+    timeout-minutes: 50
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
+        with:
+          terraform_version: '1.10'
+          terraform_wrapper: false
+      - name: Configure AWS credentials (OIDC)
+        id: login
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          role-session-name: gha-solana-future-coin-${{ github.job }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Explain a refused AWS login
+        if: failure() && steps.login.outcome == 'failure'
+        run: |
+          {
+            echo "## AWS refused this repo's GitHub login"
+            echo ""
+            echo "\`gha-aws-foundation-apply\` does not trust \`repo:${GITHUB_REPOSITORY}:ref:${GITHUB_REF}\` yet."
+            echo "Add future-trading-solana-coins to aws-foundation variables.tf (github_repos + projects) and run"
+            echo "\`terraform apply\` there (it has no CI). Then re-run this workflow."
+          } >>"$GITHUB_STEP_SUMMARY"
+          echo "::error title=AWS login refused::aws-foundation does not trust ${GITHUB_REPOSITORY} yet (see the summary)"
+      - name: Assert the credentials belong to AWS_ACCOUNT_ID
+        run: |
+          GOT="$(aws sts get-caller-identity --query Account --output text)"
+          [ "$GOT" = "$AWS_ACCOUNT_ID" ] || { echo "::error::logged in to $GOT, expected $AWS_ACCOUNT_ID"; exit 1; }
+      - name: Terraform init
+        run: |
+          terraform -chdir=infra init -input=false \
+            -backend-config="bucket=$STATE_BUCKET" -backend-config="key=$STATE_KEY" -backend-config="region=$AWS_REGION"
+      - name: Clear a stale state lock
+        run: |
+          KEY="${STATE_KEY}.tflock"
+          if aws s3api head-object --bucket "$STATE_BUCKET" --key "$KEY" >/dev/null 2>&1; then
+            aws s3 cp "s3://$STATE_BUCKET/$KEY" - 2>/dev/null | jq -c '{ID, Operation, Who, Created}' || true
+            aws s3api delete-object --bucket "$STATE_BUCKET" --key "$KEY" >/dev/null
+            echo "::warning title=Stale Terraform lock removed::a previous deploy died holding the state lock"
+          fi
+      - name: Adopt resources that exist in AWS but not in state
+        run: |
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          import_if_missing() {
+            terraform -chdir=infra state list 2>/dev/null | grep -qx "$1" && return 0
+            echo "importing $1"
+            terraform -chdir=infra import "$1" "$2" || echo "::warning::import of $1 failed - it may not exist yet"
+          }
+          # The secret Kucoin-bot is hand-made: never imported, never read or written by CI.
+          aws ecr describe-repositories --repository-names "$PREFIX" >/dev/null 2>&1 && import_if_missing aws_ecr_repository.bot "$PREFIX"
+          aws iam get-role --role-name "${PREFIX}-role" >/dev/null 2>&1 && import_if_missing aws_iam_role.bot "${PREFIX}-role"
+          aws iam get-instance-profile --instance-profile-name "${PREFIX}-profile" >/dev/null 2>&1 \
+            && import_if_missing aws_iam_instance_profile.bot "${PREFIX}-profile"
+          aws s3api head-bucket --bucket "${PREFIX}-data-${ACCOUNT}" >/dev/null 2>&1 \
+            && import_if_missing aws_s3_bucket.store "${PREFIX}-data-${ACCOUNT}"
+          SG_ID="$(aws ec2 describe-security-groups --filters Name=group-name,Values=${PREFIX}-sg \
+            --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)"
+          [ -n "$SG_ID" ] && [ "$SG_ID" != "None" ] && import_if_missing aws_security_group.bot "$SG_ID"
+          BOX_ID="$(aws ec2 describe-instances --filters Name=tag:Name,Values=${PREFIX} \
+            Name=instance-state-name,Values=pending,running,stopping,stopped \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text 2>/dev/null || true)"
+          [ -n "$BOX_ID" ] && [ "$BOX_ID" != "None" ] && import_if_missing aws_instance.bot "$BOX_ID"
+          true
+      - name: Terraform plan and apply (tries the AZs in turn)
+        run: |
+          set -o pipefail
+          for AZ in "${AWS_REGION}a" "${AWS_REGION}c" "${AWS_REGION}b"; do
+            export TF_VAR_availability_zone="$AZ"
+            echo "── trying $AZ"
+            terraform -chdir=infra plan -input=false -out=tfplan -no-color 2>&1 | tee plan.txt || exit 1
+            if terraform -chdir=infra apply -input=false -auto-approve tfplan 2>&1 | tee apply.txt; then
+              echo "applied in $AZ"; exit 0
+            fi
+            if grep -qE 'InsufficientInstanceCapacity|Unsupported.*availability zone' apply.txt; then
+              echo "::warning::no t4g capacity in $AZ; trying the next AZ"; continue
+            fi
+            echo "::error title=Terraform apply failed::see the log"; exit 1
+          done
+          echo "::error title=No capacity::every AZ refused the instance; re-run later"; exit 1
+      - name: Outputs
+        run: |
+          {
+            echo "## solana-future-coin deployed (EC2, Frankfurt)"
+            echo ""
+            echo "- Instance: \`$(terraform -chdir=infra output -raw instance_id)\`"
+            echo "- Bot role (must be in the shared bucket's futures/ exemption): \`$(terraform -chdir=infra output -raw bot_role_arn)\`"
+            echo ""
+            echo "Connect: EC2 console -> instance -> Connect -> Session Manager. Then:"
+            echo '```'
+            echo "sudo bash /opt/solana-future-coin/logs/scripts/statusCheck.sh"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  build-and-push:
+    name: build and push the image
+    needs: infrastructure
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          role-session-name: gha-solana-future-coin-${{ github.job }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd  # v2
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130  # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
+      - name: Pick a reachable base image
+        id: base
+        run: |
+          for reg in public.ecr.aws/docker/library mirror.gcr.io/library docker.io/library; do
+            if docker buildx imagetools inspect "$reg/python:3.12-slim-bookworm" >/dev/null 2>&1; then
+              echo "image=$reg/python:3.12-slim-bookworm" >>"$GITHUB_OUTPUT"; exit 0
+            fi
+            echo "::warning::$reg did not answer; trying the next registry"
+          done
+          echo "::error::no registry served python:3.12-slim-bookworm"; exit 1
+      - name: Build and push (linux/arm64)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6
+        with:
+          context: .
+          file: app/Dockerfile
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          sbom: false
+          build-args: |
+            BASE_IMAGE=${{ steps.base.outputs.image }}
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/solana-future-coin:latest
+            ${{ steps.ecr.outputs.registry }}/solana-future-coin:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Note what happens next
+        run: echo "Pushed. The box pulls :latest within 5 minutes (solana-future-coin-update.timer) and restarts on a change." >>"$GITHUB_STEP_SUMMARY"

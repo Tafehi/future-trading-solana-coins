@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.env
+.env.*
+# Runtime folders at the REPO ROOT only. A bare `data/` also matched the source package app/data/ and kept it out of
+# git (DEBUG D-4); scripts/checks.py `source-not-ignored` fails the build if that ever happens again.
+/data/
+/logs/
+infra/.terraform/
+infra/.terraform.lock.hcl.bak
+infra/tfplan
+*.tfstate
+*.tfstate.*
+audit/
+.DS_Store
