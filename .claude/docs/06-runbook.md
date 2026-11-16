@@ -16,10 +16,10 @@ Back to the index: [CLAUDE.md](../../CLAUDE.md).
 ## Going live (only after the go-live check passes, BUG B-3 is closed, and the user decides)
 
 0. B-3 first: this bot needs its own KuCoin sub-account and key (locked to an Elastic IP of this box) in its own
-   secret. The shared `Kucoin-bot` key is IP-locked to the KuCoin box, and two bots on one account break the
+   secret. Today's key (the same in both bots' secrets) is IP-locked to the KuCoin box, and two bots on one account break the
    pre-flight and the reconcile. Then set `KUCOIN_KEY_DEDICATED = true` in `app/settings.toml`: until then `MODE=live`
    refuses to boot and `golive_check` shows the "own KuCoin key" gate failing (the reminder, user 2026-11-16).
-1. Add `KUCOIN_API_PASSPHRASE` to `Kucoin-bot`; the key needs Futures trade permission.
+1. Add `KUCOIN_API_PASSPHRASE` to `solana-future-bot`; the key needs Futures trade permission.
 2. Put the real USDT in the KuCoin futures account; close any manual position there.
 3. Set `MODE = "live"` and `LIVE_START_BALANCE = <that amount>` in `app/settings.toml`, run `./precommit.sh`, push.
 4. Watch the first `[LIVE]` digest and `statusCheck.sh`; the reconcile loop pauses entries and alarms on any mismatch.

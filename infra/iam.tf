@@ -55,7 +55,7 @@ resource "aws_iam_role_policy" "secret_read" {
       Effect = "Allow"
       Action = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
       # The hand-made secret; AWS appends 6 random characters to every secret ARN, hence the -*.
-      Resource = "arn:aws:secretsmanager:${var.aws_region}:${local.account_id}:secret:${local.secret_name}-*"
+      Resource = "arn:aws:secretsmanager:${var.aws_region}:${local.account_id}:secret:${local.secret_name}-??????"
     }]
   })
 }

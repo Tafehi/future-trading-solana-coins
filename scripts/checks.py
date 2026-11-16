@@ -20,6 +20,8 @@ Checks:
                    (DEBUG D-4)
 - evidence-read-only : every AWS call in scripts/collect_evidence.sh only reads (sts get-caller-identity, s3 ls,
                    s3 cp FROM s3://); the operator runs it with full rights, so a write there would be real
+- old-secret-name : no code, script or Terraform names the deleted shared secret (user, 2026-11-16: each bot has its
+                   own secret now, solana-future-bot here); docs may mention it as history
 - host-guards    : the box keeps two guards (2026-11-16): the update timer retries a FAILED bot start, and the host
                    sync re-runs hostSetup.sh while sshd is not masked (DEBUG D-7)
 """
@@ -54,6 +56,7 @@ SKIP_DIRS = {
     ".mypy_cache",
     ".ruff_cache",
     ".pytest_cache",
+    "audit",  # local evidence from scripts/collect_evidence.sh (git-ignored, never committed)
 }
 TEXT_SUFFIXES = {
     ".py",
@@ -182,9 +185,20 @@ def check_evidence_read_only(text: str, name: str) -> list[str]:
 
 
 # No FRESH_START guard here: this bot is new and starts empty by design (hostSetup.sh restore comment).
+OLD_SECRET = "Kucoin" + "-bot"  # split so this file does not trip its own check
+CODE_SUFFIXES = {".py", ".sh", ".tf", ".toml", ".yml", ".yaml"}
+
+
+def check_old_secret(text: str, name: str) -> list[str]:
+    return [f"old-secret-name: {name} still names {OLD_SECRET}"] if OLD_SECRET in text else []
+
+
 HOST_GUARDS = {
-    "hostSetup.sh": ["systemctl is-failed --quiet solana-future-coin"],
-    "infra/user_data.sh": ["systemctl is-enabled sshd 2>/dev/null | grep -q masked || RERUN=1"],
+    "hostSetup.sh": ["systemctl is-failed --quiet solana-future-coin", '--secret-id "solana-future-bot"'],
+    "infra/user_data.sh": [
+        "systemctl is-enabled sshd 2>/dev/null | grep -q masked || RERUN=1",
+        '--secret-id "solana-future-bot"',
+    ],
 }
 
 
@@ -269,6 +283,9 @@ def run() -> int:
     ev = ROOT / "scripts" / "collect_evidence.sh"
     errors += check_evidence_read_only(ev.read_text(), "scripts/collect_evidence.sh")
     errors += check_host_guards({n: (ROOT / n).read_text() for n in HOST_GUARDS})
+    for p in files():
+        if p.suffix in CODE_SUFFIXES and p.name != "checks.py":
+            errors += check_old_secret(p.read_text(errors="ignore"), str(p.relative_to(ROOT)))
     for f in sorted((ROOT / "app" / "tests" / "fixtures").glob("*.json")):
         errors += check_fixture_keys(f.read_text(), str(f.relative_to(ROOT)))
     for p in files():
@@ -315,6 +332,8 @@ def self_test() -> int:
         missed.append("evidence-read-only (delete)")
     if check_evidence_read_only('"$AWS" s3 cp "s3://b/k" "$OUT/k"\n"$AWS" s3 ls "s3://b/"\n', "t"):
         missed.append("evidence-read-only allows a download")
+    if not check_old_secret('--secret-id "' + OLD_SECRET + '"', "t"):
+        missed.append("old-secret-name")
     if len(check_host_guards({})) != sum(len(v) for v in HOST_GUARDS.values()):
         missed.append("host-guards")
     if "app/data/kucoin.py" in source_paths() and not _caught_with_pattern(

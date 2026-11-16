@@ -17,6 +17,34 @@ set -uo pipefail
 BOT_DIR="/opt/solana-future-coin"
 echo "=== hostSetup.sh $(date -u) ==="
 
+# ── 0. .env from the secret solana-future-bot (user, 2026-11-16: this bot's own; the old shared secret is deleted) ──
+# user_data.sh writes this script only at the first boot; writing it here too (the host sync re-runs this file when it
+# changes) is what moves a RUNNING box to a new secret. A missing or unreadable secret keeps the existing .env.
+cat >/usr/local/bin/solana-future-coin-env-refresh <<'EOF'
+#!/bin/bash
+set -uo pipefail
+BOT_DIR="/opt/solana-future-coin"
+umask 077
+aws secretsmanager get-secret-value --region "$(/usr/local/bin/solana-future-coin-region)" --secret-id "solana-future-bot" \
+  --query SecretString --output text \
+  | jq -r 'to_entries | .[] | "\(.key)=\(.value|tostring)"' | sort >"${BOT_DIR}/.env.new"
+if [ ! -s "${BOT_DIR}/.env.new" ]; then
+  rm -f "${BOT_DIR}/.env.new"
+  echo "secret fetch empty; keeping the existing .env"
+  exit 1
+fi
+if [ -f "${BOT_DIR}/.env" ] && diff -q "${BOT_DIR}/.env" "${BOT_DIR}/.env.new" >/dev/null 2>&1; then
+  rm -f "${BOT_DIR}/.env.new"
+  exit 0
+fi
+mv "${BOT_DIR}/.env.new" "${BOT_DIR}/.env"
+chmod 600 "${BOT_DIR}/.env"
+echo "the secret changed ($(grep -c '=' "${BOT_DIR}/.env") keys); restarting the bot if it runs"
+if systemctl is-active --quiet solana-future-coin; then systemctl restart solana-future-coin; fi
+EOF
+chmod 755 /usr/local/bin/solana-future-coin-env-refresh
+/usr/local/bin/solana-future-coin-env-refresh || echo "WARN: secret solana-future-bot not readable; .env kept as it was"
+
 # ── 1. swap ────────────────────────────────────────────────────────────────────────────────────────
 if ! swapon --show | grep -q /swapfile; then
   if [ ! -f /swapfile ]; then

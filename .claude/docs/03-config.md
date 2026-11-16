@@ -4,16 +4,18 @@ Back to the index: [CLAUDE.md](../../CLAUDE.md).
 
 ## Layers
 
-1. Environment (on the box: `/opt/solana-future-coin/.env`, rendered hourly from Secrets Manager `Kucoin-bot`).
+1. Environment (on the box: `/opt/solana-future-coin/.env`, rendered hourly from Secrets Manager `solana-future-bot`).
 2. `app/settings.toml` (non-secret; a test fails on an unknown key or a secret key in it).
 3. Defaults in `app/config.py` (each with a comment saying why).
 
-## The secret `Kucoin-bot` (eu-central-1, hand-made by the user, never touched by CI)
+## The secret `solana-future-bot` (eu-central-1, hand-made by the user, never touched by CI)
 
-Shared with the KuCoin bot (`future-trading-kucoins`) for now (user, 2026-11-14). Live needs this bot's own key and
-secret first (BUG B-3).
+This bot's own secret since 2026-11-16 (user); the old shared secret is deleted, the KuCoin bot reads
+`kucoin-future-bot`. The KuCoin key inside is still the same account key as the KuCoin bot's: live needs this bot's
+own KuCoin sub-account and key first (BUG B-3). `hostSetup.sh` section 0 rewrites the `.env` script, so a secret rename
+reaches a running box; an unreadable secret keeps the last `.env` and `statusCheck.sh` section 3 warns.
 
-| Key | Needed for | State 2026-11-13 |
+| Key | Needed for | State |
 |---|---|---|
 | `KUCOIN_API_KEY`, `KUCOIN_API_SECRET` | live orders | present, but IP-locked to the KuCoin box: unusable from here (B-3) |
 | `KUCOIN_API_PASSPHRASE` | live orders (KuCoin signs every private call with it) | present since 2026-11-13, unused until live (B-3) |

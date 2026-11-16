@@ -12,7 +12,7 @@ The same pattern as the KuCoin bot (`future-trading-kucoins`), with its own name
 |---|---|
 | EC2 | `solana-future-coin`, t4g.micro arm64, AL2023, 20 GB gp3 encrypted, IMDSv2, no key pair, public IP (not Elastic: paper needs none, B-3), no inbound rule |
 | Network | aws-foundation's shared VPC `vpc-06f42723ee12cfa5b`, public subnets a/c/b (deploy tries them in turn) |
-| Role | `solana-future-coin-role` (boundary `gha-workload-boundary`): SSM core, ECR pull, read `Kucoin-bot`, own bucket, PutObject `bigdata-shared-history-<acct>/futures/*` |
+| Role | `solana-future-coin-role` (boundary `gha-workload-boundary`): SSM core, ECR pull, read `solana-future-bot` (exact name + 6 random chars), own bucket, PutObject `bigdata-shared-history-<acct>/futures/*` |
 | ECR | `solana-future-coin` (`:latest` + `:sha-<commit>`, keep 10) |
 | Bucket | `solana-future-coin-data-<acct>`: `live/` `daily/` backups, `host/` scripts, `diag/` evidence (30 days) |
 | State | `terraform-state-267850879774/future-trading-solana-coins/terraform.tfstate` (lockfile) |
@@ -46,4 +46,4 @@ Rollback: retag an older `sha-` image as `latest` in ECR.
 ## Never
 
 Use local AWS credentials (global rule). Put a secret in a file. Add an inbound rule or an SSH key (aws-foundation
-guard rails refuse both). Read `Kucoin-bot` from Terraform (CI roles cannot).
+guard rails refuse both). Read `solana-future-bot` from Terraform (CI roles cannot).

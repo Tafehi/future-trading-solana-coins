@@ -48,14 +48,20 @@ echo "$HEALTH" | jq -c '{status, mode, account, loops, account_state}' 2>/dev/nu
 
 echo "3. config"
 [ -f "${BOT_DIR}/.env" ] && ok ".env present ($(grep -c '=' "${BOT_DIR}/.env") keys)" || fail ".env missing" "sudo /usr/local/bin/solana-future-coin-env-refresh"
+# The hourly refresh keeps the old .env when the secret cannot be read; say so, or a deleted/renamed secret goes unseen.
+if systemctl is-failed --quiet solana-future-coin-env.service; then
+  warn "secret solana-future-bot not readable: .env is the last good copy (sudo /usr/local/bin/solana-future-coin-env-refresh)"
+else
+  ok "secret solana-future-bot read by the last .env refresh"
+fi
 for k in TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID KUCOIN_API_KEY KUCOIN_API_SECRET; do
-  grep -q "^${k}=." "${BOT_DIR}/.env" 2>/dev/null && ok "$k set" || warn "$k not set in Kucoin-bot"
+  grep -q "^${k}=." "${BOT_DIR}/.env" 2>/dev/null && ok "$k set" || warn "$k not set in solana-future-bot"
 done
 grep -q '^KUCOIN_API_PASSPHRASE=.' "${BOT_DIR}/.env" 2>/dev/null && ok "KUCOIN_API_PASSPHRASE set" \
   || warn "KUCOIN_API_PASSPHRASE not set (needed before MODE=live)"
 # Jupiter is this bot's ONLY source (split 2026-11-14): without the RPC URL it sees no trader and trades nothing.
 grep -q '^SOLANA_RPC_URL=.' "${BOT_DIR}/.env" 2>/dev/null && ok "SOLANA_RPC_URL set (Jupiter on)" \
-  || fail "SOLANA_RPC_URL not set: no source, the bot trades nothing" "add SOLANA_RPC_URL to the Kucoin-bot secret"
+  || fail "SOLANA_RPC_URL not set: no source, the bot trades nothing" "add SOLANA_RPC_URL to the solana-future-bot secret"
 [ -f "${BOT_DIR}/data/STOP" ] && fail "kill switch file present" "sudo rm ${BOT_DIR}/data/STOP when you want it to trade again"
 
 echo "4. trades"
@@ -83,7 +89,7 @@ if [ "${1:-}" = "--evidence" ]; then
     journalctl --since "72 hours ago" -u 'solana-future-coin*' --no-pager >"${EV}/journal.log" 2>&1
     cp "${BOT_DIR}"/logs/status-daily.log "${BOT_DIR}"/logs/hostsetup.log "${EV}/" 2>/dev/null
     cp -r "${BOT_DIR}/logs/app" "${EV}/app-logs" 2>/dev/null
-    # Key NAMES only, never values: the .env holds the Kucoin-bot secret.
+    # Key NAMES only, never values: the .env holds the solana-future-bot secret.
     cut -d= -f1 "${BOT_DIR}/.env" >"${EV}/env-keys.txt" 2>/dev/null
     docker inspect solana-future-coin --format '{{.Config.Image}} {{.Image}} {{.State.StartedAt}}' >"${EV}/image.txt" 2>&1
     find "${BOT_DIR}/data" -maxdepth 3 -printf '%TY-%Tm-%Td %TH:%TM %10s %p\n' >"${EV}/data-files.txt" 2>/dev/null

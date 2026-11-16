@@ -86,14 +86,15 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
-# ── 3. .env from the hand-made secret Kucoin-bot, refreshed hourly; restart only on a change ───────
+# ── 3. .env from the hand-made secret solana-future-bot, refreshed hourly; restart only on a change ──
+# hostSetup.sh writes the same script again (section 0), so a running box picks up a change of secret name.
 # `to_entries`, so a key added to the secret later (KUCOIN_API_PASSPHRASE, SOLANA_RPC_URL) needs no change here.
 cat >/usr/local/bin/solana-future-coin-env-refresh <<'EOF'
 #!/bin/bash
 set -uo pipefail
 BOT_DIR="/opt/solana-future-coin"
 umask 077
-aws secretsmanager get-secret-value --region "$(/usr/local/bin/solana-future-coin-region)" --secret-id "Kucoin-bot" \
+aws secretsmanager get-secret-value --region "$(/usr/local/bin/solana-future-coin-region)" --secret-id "solana-future-bot" \
   --query SecretString --output text \
   | jq -r 'to_entries | .[] | "\(.key)=\(.value|tostring)"' | sort >"${BOT_DIR}/.env.new"
 if [ ! -s "${BOT_DIR}/.env.new" ]; then
@@ -114,7 +115,7 @@ chmod 755 /usr/local/bin/solana-future-coin-env-refresh
 
 cat >/etc/systemd/system/solana-future-coin-env.service <<'EOF'
 [Unit]
-Description=Refresh /opt/solana-future-coin/.env from Secrets Manager (Kucoin-bot)
+Description=Refresh /opt/solana-future-coin/.env from Secrets Manager (solana-future-bot)
 After=network-online.target
 Wants=network-online.target
 

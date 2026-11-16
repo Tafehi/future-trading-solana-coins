@@ -119,7 +119,7 @@ locals {
   bucket_name = "${local.prefix}-data-${data.aws_caller_identity.current.account_id}"
   # The hand-made secret (user, 2026-11-13), SHARED with the KuCoin bot for now (user, 2026-11-14; BUG B-3). Named only in the instance role's policy, never read by Terraform: the CI
   # roles may only touch secrets under solana-future-coin/*, so a data source on it would fail plan and apply.
-  secret_name   = "Kucoin-bot"
+  secret_name   = "solana-future-bot"
   shared_bucket = "bigdata-shared-history-${data.aws_caller_identity.current.account_id}"
   apply_role    = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/gha-aws-foundation-apply"
   plan_role     = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/gha-aws-foundation-plan"
@@ -222,7 +222,7 @@ resource "aws_instance" "bot" {
   }
 }
 
-# No Elastic IP. Paper makes no signed KuCoin call, so the box's IP does not matter. The KuCoin key in Kucoin-bot is
+# No Elastic IP. Paper makes no signed KuCoin call, so the box's IP does not matter. The KuCoin key (in solana-future-bot; the same account key as the KuCoin bot's today) is
 # IP-locked to the KuCoin bot's box, so LIVE from here needs its own KuCoin sub-account and key first (BUG B-3); an
 # Elastic IP would come with that key.
 

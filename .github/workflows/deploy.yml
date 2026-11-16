@@ -129,7 +129,7 @@ jobs:
             echo "importing $1"
             terraform -chdir=infra import "$1" "$2" || echo "::warning::import of $1 failed - it may not exist yet"
           }
-          # The secret Kucoin-bot is hand-made: never imported, never read or written by CI.
+          # The secret solana-future-bot is hand-made: never imported, never read or written by CI.
           aws ecr describe-repositories --repository-names "$PREFIX" >/dev/null 2>&1 && import_if_missing aws_ecr_repository.bot "$PREFIX"
           aws iam get-role --role-name "${PREFIX}-role" >/dev/null 2>&1 && import_if_missing aws_iam_role.bot "${PREFIX}-role"
           aws iam get-instance-profile --instance-profile-name "${PREFIX}-profile" >/dev/null 2>&1 \

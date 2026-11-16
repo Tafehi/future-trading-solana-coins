@@ -1,4 +1,4 @@
-# Non-secret settings for the solana-future-coin bot (Jupiter Perps traders copied onto KuCoin). The environment (from the Kucoin-bot secret) wins over this file;
+# Non-secret settings for the solana-future-coin bot (Jupiter Perps traders copied onto KuCoin). The environment (from the solana-future-bot secret) wins over this file;
 # this file wins over the defaults in app/config.py. NEVER put a key, token or URL with a key in here
 # (app/tests/test_config.py fails the build if you do).
 
@@ -29,7 +29,7 @@ PAPER_FILL_DELAY_S = 1.0
 
 # ── Wallets ──────────────────────────────────────────────────────────────────────────────────────
 JUPITER_GRADE_MINUTES = 5.0    # Jupiter re-grade + re-pick (user, 2026-11-13; was hourly)
-JUPITER_ENABLED = true         # the only source; does nothing until SOLANA_RPC_URL is in the Kucoin-bot secret
+JUPITER_ENABLED = true         # the only source; does nothing until SOLANA_RPC_URL is in the solana-future-bot secret
 JUPITER_POLL_SECONDS = 60.0
 
 # ── More wallets (user, 2026-11-13: items 1-5) ───────────────────────────────────────────────────

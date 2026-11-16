@@ -21,12 +21,14 @@ first; paper is treated exactly like real money. Split on 2026-11-14 from `futur
 
 ## Current state (2026-11-16)
 
+- **Box up 2026-11-16:** `solana-future-coin` `i-05ad4a52b74d57842` (eu-central-1a, IP 3.70.194.183), t4g.micro.
 - **First push 2026-11-16.** Every AWS name is `solana-future-coin-*` (user, 2026-11-16; was `futsol-bot`), on a
   **t4g.micro** (user). aws-foundation **B-34** applied and Pump-fun-S3 D-129 pushed (user, 2026-11-16) before it.
   B-1 closes when `statusCheck.sh` on the new box ends `ALL OK`.
 - **Mode:** paper, account `paper-1`, $10,000, 3x isolated, max 10 positions, 6% margin per full-weight trade.
-- **Secret `Kucoin-bot`** is SHARED with the KuCoin bot (user, 2026-11-14). Paper makes no signed KuCoin call, so the
-  new box's IP is fine. **Live is blocked** (B-3): the key is IP-locked to the KuCoin box and both bots would share one
+- **Secret `solana-future-bot`** (user, 2026-11-16): this bot's own; the old shared secret is deleted. Until it exists
+  the box keeps its last `.env` (B-9). It still holds the SAME KuCoin account key as the KuCoin bot. Paper makes no
+  signed KuCoin call, so the new box's IP is fine. **Live is blocked** (B-3): the key is IP-locked to the KuCoin box and both bots would share one
   KuCoin account. `MODE=live` refuses to boot until `KUCOIN_KEY_DEDICATED=true` (user: "remind me ... I will add
   another api key for solana"); the go-live check prints the reminder. `SOLANA_RPC_URL` is this bot's only source: without it, nothing happens (B-5).
 - **Recordings:** `futures/jupiter/` and `futures/solana-bot/` in the shared bucket. Uploads work once Pump-fun-S3 D-129

@@ -2,7 +2,7 @@
 
 Three layers, highest priority first:
 
-1. Environment variables. On the instance they come from the hand-made Secrets Manager secret `Kucoin-bot`
+1. Environment variables. On the instance they come from the hand-made Secrets Manager secret `solana-future-bot`
    (rendered into `/opt/solana-future-coin/.env` by the `solana-future-coin-env` host timer). Secrets live ONLY
    here. The secret is shared with the KuCoin bot (future-trading-kucoins) for now (user, 2026-11-14; BUG B-3).
 2. `app/settings.toml` — every non-secret setting. `SETTINGS_FILE` points elsewhere; `unset` or blank disables
@@ -189,11 +189,11 @@ class Settings(BaseSettings):
     kucoin_api_passphrase: str = Field(default="", alias="KUCOIN_API_PASSPHRASE")
     kucoin_key_version: str = Field(default="3", alias="KUCOIN_KEY_VERSION")
     # GO-LIVE BLOCKER (user, 2026-11-16: "as soon as we have decided for the real money remind me ... I will add
-    # another api key for solana"). Today this bot and the KuCoin bot (future-trading-kucoins) share ONE KuCoin
-    # account and key (the secret Kucoin-bot): each bot's live pre-flight would refuse the other's positions,
-    # live_reconcile would flag them, and the key is IP-locked to the other box. Set this true ONLY when this bot has
-    # its own KuCoin sub-account and key, locked to this box's IP. MODE=live refuses to boot until then (BUG B-3), and
-    # the go-live check shows it as a failed gate.
+    # another api key for solana"). Today this bot and the KuCoin bot (future-trading-kucoins) hold the SAME KuCoin
+    # account key (each in its own secret since 2026-11-16: solana-future-bot / kucoin-future-bot). Each bot's live
+    # pre-flight would refuse the other's positions, live_reconcile would flag them, and the key is IP-locked to the
+    # other box. Set this true ONLY when this bot has its own KuCoin sub-account and key, locked to this box's IP.
+    # MODE=live refuses to boot until then (BUG B-3), and the go-live check shows it as a failed gate.
     kucoin_key_dedicated: bool = Field(default=False, alias="KUCOIN_KEY_DEDICATED")
     http_timeout_s: float = Field(default=15.0, gt=0.0, alias="HTTP_TIMEOUT_S")
 
@@ -278,7 +278,7 @@ class Settings(BaseSettings):
         ]
         if missing:
             raise ValueError(
-                f"MODE=live but {', '.join(missing)} missing from the Kucoin-bot secret. Refusing to boot."
+                f"MODE=live but {', '.join(missing)} missing from the solana-future-bot secret. Refusing to boot."
             )
         if self.live_start_balance <= 0:
             raise ValueError("MODE=live needs LIVE_START_BALANCE (the real USDT in the futures account). Refusing.")

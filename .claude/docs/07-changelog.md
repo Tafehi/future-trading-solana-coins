@@ -95,3 +95,11 @@ repo became `future-trading-kucoins` (Hyperliquid -> KuCoin); this one is `futur
   box); the update timer retries a FAILED bot start. `scripts/checks.py host-guards` keeps both. The restore still
   starts fresh when there is no backup (this bot has no history; the KuCoin bot waits instead).
 - **Shared bucket:** Pump-fun-S3 D-129 (in code there) lists `solana-future-coin-role` for `futures/` (B-4).
+
+## 2026-11-16 (later) — Own secret `solana-future-bot`
+
+- This bot reads `solana-future-bot` (user; the old shared secret is deleted after B-9). Terraform names it exactly
+  (`-??????`); `hostSetup.sh` section 0 rewrites the `.env` script so the running box switches; an unreadable secret
+  keeps the last `.env` and `statusCheck.sh` warns. Check `old-secret-name`; `audit/` skipped by `scripts/checks.py`.
+- Incident on 2026-11-16: copying the old futcoins bucket into this bucket also copied the OLD `host/` files; fixed by
+  copying this repo's three host files back (the box syncs `host/` every 5 min). `host/` belongs to Terraform.

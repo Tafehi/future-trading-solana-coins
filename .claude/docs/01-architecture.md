@@ -9,7 +9,7 @@ on **Jupiter Perps** (Solana), where positions are public, copies their opens on
 closes with its own exits. Paper and live share every line of code except the class that sends orders.
 
 Split on 2026-11-14 from `future-trading-coins` (D-19). The Hyperliquid source stayed there (that repo is now
-`future-trading-kucoins`). The two bots share nothing at runtime except the secret `Kucoin-bot`, the Telegram chat
+`future-trading-kucoins`). The two bots share nothing at runtime except the KuCoin account key (each in its own secret: `solana-future-bot` here), the Telegram chat
 and the shared history bucket (each with its own folders).
 
 ```

@@ -5,7 +5,7 @@ KuCoin USDT-M perpetual futures, with its own exits. It runs in paper mode first
 money, and reports to Telegram every 15 minutes when it traded (stamped `[PAPER] Jupiter-KuCoin`).
 
 Split on 2026-11-14 from `future-trading-coins`, which is now `future-trading-kucoins` (the Hyperliquid -> KuCoin
-bot). Each bot has its own EC2 box; for now they share the secret `Kucoin-bot`.
+bot). Each bot has its own EC2 box and its own secret (`solana-future-bot` here).
 
 - Start here: [CLAUDE.md](CLAUDE.md) (index, current state, rules).
 - Check everything locally: `./precommit.sh` (needs `python3.12 -m venv .venv && .venv/bin/pip install -r app/requirements-dev.txt`, terraform, shellcheck).

@@ -1,7 +1,7 @@
 # The solana-future-coin bot on the EC2 box. One container. `ECR_REGISTRY` comes from the systemd unit (solana-future-coin.service).
 #
 # - Health binds 127.0.0.1 only: nothing on the box listens on a public interface (statusCheck.sh section 0).
-# - .env holds the Kucoin-bot secret, rendered hourly by solana-future-coin-env.timer; never baked into the image.
+# - .env holds the solana-future-bot secret, rendered hourly by solana-future-coin-env.timer; never baked into the image.
 # - data/ holds the SQLite database, the Parquet spool and the STOP kill-switch file.
 services:
   bot:
