@@ -38,7 +38,8 @@ first; paper is treated exactly like real money. Split on 2026-11-14 from `futur
   history from before the split. `app/tools/evidence_report.py` writes every table as CSV + `summary.md`.
 - **Wallet pool:** Jupiter GOLD + SILVER (weight <= 3), chain history (20k calls/day, B-15), shadow copies decide the
   order. `wallets_report` shows it.
-- **Telegram:** same chat as the KuCoin bot. A digest every 15 min only when something was traded, plus alarms. Every
+- **Telegram:** same chat as the KuCoin bot. A report every 45 min, ALWAYS (user, 2026-11-16): trades of the window (if any), open
+  positions, account; plus alarms. Every
   message is stamped `[PAPER] Jupiter-KuCoin` (`BOT_NAME`).
 - Checks: `./precommit.sh` prints its own counts (tests, mutants); that output is the source of truth, not this file.
 
@@ -53,7 +54,8 @@ first; paper is treated exactly like real money. Split on 2026-11-14 from `futur
    balance and a passing pre-flight. Do not weaken `_live_needs_everything` or `live_preflight`. Not before B-3 closes.
 4. **Paper = live except the executor** (D-3). Any change to gates, sizing, exits or the ledger applies to both. Paper
    must keep refusing what KuCoin refuses (`executor.check_rules`) and filling on a fresh book.
-5. **Telegram sends only real fills (the 15-min digest) and alarms** — no signals, refusals or wallet lists (D-8).
+5. **Telegram sends only the 45-min report (real fills, open positions, account) and alarms** — no signals,
+   refusals or wallet lists (D-8, 45-min report: DECISIONS last row).
    Every message carries `BOT_NAME` (D-21).
 6. **`./precommit.sh` must print ALL STAGES PASS before any commit, and `scripts/verify_clone.sh` before any push**
    (a fresh clone is what CI sees; DEBUG D-4).

@@ -40,7 +40,8 @@ mut app/trading/paper_executor.py 'await self._sleep(self.delay_s)' 'pass' 'fres
 mut app/data/kucoin_private.py 'ts + method.upper() + endpoint + body' 'ts + method.upper() + endpoint' 'prehash or pinned'
 mut app/data/kucoin_private.py '"KC-API-PASSPHRASE": sign(secret, passphrase)' '"KC-API-PASSPHRASE": passphrase' 'prehash'
 mut app/notifications/digest.py 'await meta.put(conn, LAST_END_KEY, end)
-        text' 'text' 'sends_one_window_once'
+        newest' 'pass
+        newest' 'sends_one_window_once'
 mut app/notifications/digest.py 'if text is None:
             continue' 'if text is None:
             text = "empty"' 'sends_one_window_once'
@@ -95,6 +96,11 @@ mut app/data/market.py 'coins = sorted(JUPITER_COINS)' 'coins = sorted(JUPITER_C
 # 2026-11-16: Jupiter wallet history exported once each
 mut app/record/episodes_export.py 'WHERE id > ? ORDER BY id' 'WHERE id >= ? ORDER BY id' 'exported_once'
 mut app/record/episodes_export.py '            await meta.put(conn, KEY, max(int(r["id"]) for r in rows))' '            pass' 'exported_once'
+
+# 2026-11-16: the Telegram report every 45 min, always
+mut app/notifications/messages.py 'if not opened and not closed and not always:' 'if not opened and not closed:' 'reports_when_always'
+mut app/notifications/digest.py 'always=settings.digest_always and newest' 'always=settings.digest_always' 'gap_sends_one'
+mut app/config.py '        if 1440 % self.digest_minutes:' '        if False:' 'divide_a_day'
 
 rm -f "$backup"
 echo "mutants survived: $survived"

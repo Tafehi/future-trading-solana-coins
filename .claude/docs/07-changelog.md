@@ -106,3 +106,9 @@ repo became `future-trading-kucoins` (Hyperliquid -> KuCoin); this one is `futur
 - **Wallet history as Parquet (user):** new `jup_episodes` rows (the Jupiter trades grading uses) are copied at each
   flush to `futures/solana-bot/episodes`; the last exported id lives in `meta` (no repeats, no gaps after a restart).
   `record/episodes_export.py`, `test_episodes_export.py` (2), 2 mutants; `collect_evidence.sh` downloads it.
+
+## 2026-11-16 — Telegram report every 45 min, always (D-24)
+
+- `DIGEST_MINUTES = 45`, new `DIGEST_ALWAYS = true`: every window sends a report; one with no trade says "no trades in
+  this window" and lists the open positions and the account. After a gap only the newest empty window reports. Every
+  report has an "Open positions" block. `DIGEST_MINUTES` must divide 1440. 3 new tests + 3 mutants (as the KuCoin bot).

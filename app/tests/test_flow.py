@@ -175,6 +175,7 @@ async def test_digest_sends_one_window_once_and_skips_empty_ones(
     fresh_db: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "digest_minutes", 15)
+    monkeypatch.setattr(settings, "digest_always", False)  # the trades-only mode
     step = 900.0
     w0 = NOW - (NOW % step)  # a window boundary
     async with store.session() as conn:
@@ -189,6 +190,51 @@ async def test_digest_sends_one_window_once_and_skips_empty_ones(
     assert "since start" in n.sent[0]
     assert await digest.run_digest(n, now=w0 + 2 * step + 50) == 0  # a restart in the same window: nothing again
     assert len(n.sent) == 1
+
+
+async def test_every_window_reports_when_always_is_on(fresh_db: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """User, 2026-11-16: a report every 45 min even with no trade: the open positions and the account."""
+    monkeypatch.setattr(settings, "digest_minutes", 45)
+    monkeypatch.setattr(settings, "digest_always", True)
+    step = 2700.0
+    w0 = NOW - (NOW % step)
+    async with store.session() as conn:
+        await meta.put(conn, digest.LAST_END_KEY, w0)
+    await add_wallet()
+    await add_signal(ts=w0 + 10)
+    _, _, copier = setup()
+    await copier.handle_pending(now=w0 + 10)
+    n = FakeNotifier()
+    assert await digest.run_digest(n, now=w0 + step + 5) == 1  # the window with the open
+    assert "OPEN #1" in n.sent[0] and "Open positions" in n.sent[0]
+    assert await digest.run_digest(n, now=w0 + 2 * step + 5) == 1  # an empty window still reports
+    assert "no trades in this window" in n.sent[1] and "Open positions" in n.sent[1] and "Account $" in n.sent[1]
+    assert "[PAPER]" in n.sent[1]
+
+
+async def test_a_gap_sends_one_status_report_not_one_per_window(fresh_db: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "digest_minutes", 45)
+    monkeypatch.setattr(settings, "digest_always", True)
+    step = 2700.0
+    w0 = NOW - (NOW % step)
+    async with store.session() as conn:
+        await meta.put(conn, digest.LAST_END_KEY, w0)
+    n = FakeNotifier()
+    assert await digest.run_digest(n, now=w0 + 5 * step + 5) == 1  # five empty windows after a restart: one report
+    assert len(n.sent) == 1
+
+
+def test_the_report_runs_every_45_minutes_and_must_divide_a_day(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pydantic import ValidationError
+
+    from app.config import DEFAULT_SETTINGS_FILE, Settings
+
+    monkeypatch.setenv("SETTINGS_FILE", str(DEFAULT_SETTINGS_FILE))
+    s = Settings()
+    assert s.digest_minutes == 45 and s.digest_always is True
+    monkeypatch.setenv("DIGEST_MINUTES", "50")  # 1440 / 50 is not whole: windows would drift
+    with pytest.raises(ValidationError, match="DIGEST_MINUTES"):
+        Settings()
 
 
 async def test_first_digest_run_does_not_backfill(fresh_db: str) -> None:

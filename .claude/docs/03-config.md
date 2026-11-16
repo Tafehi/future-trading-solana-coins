@@ -43,4 +43,6 @@ only when the file changed.
   `SHADOW_MAX_WALLETS`, `SHADOW_POLL_SECONDS`, `HL_STREAM_*`, `RECORD_BOOK_TOP_N`, and the Hyperliquid weight check.
   A removed key left in `settings.toml` fails `test_settings_file_has_no_secret_and_only_known_keys`.
 - Added: `BOT_NAME` (default `Jupiter-KuCoin`), the name in every Telegram message (D-21).
+- `DIGEST_MINUTES = 45`, `DIGEST_ALWAYS = true` (user, 2026-11-16): a Telegram report every 45 min even without a
+  trade (open positions + account); `false` = only windows with a trade. The minutes must divide 1440.
 - `DB_PATH` default is `data/solana-future-coin.db`.

@@ -207,8 +207,12 @@ class Settings(BaseSettings):
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field(default="", alias="TELEGRAM_CHAT_ID")
     heartbeat_url: str = Field(default="", alias="HEARTBEAT_URL")
-    # The trade report window (user, 2026-11-13: every 15 min, only when something was traded).
-    digest_minutes: int = Field(default=15, ge=1, le=240, alias="DIGEST_MINUTES")
+    # The Telegram report window. User, 2026-11-16: every 45 min, ALWAYS (was 15 min, only when something traded): a
+    # window with no trade still sends the account and the open positions. Windows are aligned to UTC midnight, so the
+    # value must divide a day (checked below).
+    digest_minutes: int = Field(default=45, ge=1, le=240, alias="DIGEST_MINUTES")
+    # true: every window sends a report; false: only windows with a trade (the old behaviour).
+    digest_always: bool = Field(default=True, alias="DIGEST_ALWAYS")
 
     # ── Go-live gates (`app/core/golive.py`) ─────────────────────────────────────────────
     golive_min_trades: int = Field(default=30, ge=1, alias="GOLIVE_MIN_TRADES")
@@ -298,6 +302,12 @@ class Settings(BaseSettings):
             raise ValueError("GOLD_MAX_DRAWDOWN is looser than SILVER_MAX_DRAWDOWN")
         if self.gold_min_trades < self.silver_min_trades:
             raise ValueError("GOLD_MIN_TRADES is below SILVER_MIN_TRADES")
+        return self
+
+    @model_validator(mode="after")
+    def _digest_divides_a_day(self) -> "Settings":
+        if 1440 % self.digest_minutes:
+            raise ValueError(f"DIGEST_MINUTES={self.digest_minutes} must divide 1440 (windows are aligned to midnight)")
         return self
 
     @model_validator(mode="after")

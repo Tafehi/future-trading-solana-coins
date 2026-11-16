@@ -1,7 +1,9 @@
 """Telegram message text. Only REAL fills reach Telegram (user, 2026-11-13): no signals, refusals or wallet lists.
 
-- `digest(start, end)`: every DIGEST_MINUTES, the positions opened and closed in [start, end), each with its $ result,
-  plus the account. None when nothing was traded in the window (no message is sent).
+- `digest(start, end, always=...)`: every DIGEST_MINUTES (45 since 2026-11-16), the positions opened and closed in
+  [start, end), each with its $ result, then the open positions and the account. With `always` (DIGEST_ALWAYS, the
+  default since 2026-11-16) a window without a trade still sends the open positions and the account; without it such
+  a window returns None (no message).
 - `alarm(title, detail)`: problems that need a human, sent at once.
 
 Pump-fun style: HTML, emoji status, one block per trade, every value escaped.
@@ -70,7 +72,16 @@ def closed_block(p: dict[str, Any]) -> str:
     )
 
 
-async def digest(start: float, end: float) -> str | None:
+def open_line(p: Any) -> str:
+    """One open position: side, coin, margin, unrealized at the last mark, how long held."""
+    mark = p.last_mark or p.entry_px
+    return (
+        f"• {esc(p.side.upper())} {esc(p.coin)} ({esc(p.symbol)}) {int(p.leverage)}x · margin ${p.margin:,.0f} · "
+        f"unrealized {usd(p.unrealized(mark))} · held {duration(time.time() - p.opened_at)}"
+    )
+
+
+async def digest(start: float, end: float, *, always: bool = False) -> str | None:
     account = settings.account
     async with store.session() as conn:
         async with conn.execute(
@@ -84,7 +95,7 @@ async def digest(start: float, end: float) -> str | None:
             (account, start, end),
         ) as cur:
             closed = [dict(r) for r in await cur.fetchall()]
-        if not opened and not closed:
+        if not opened and not closed and not always:
             return None
         equity = await ledger.equity(conn, account)
         deposits = await ledger.deposits(conn, account)
@@ -98,10 +109,16 @@ async def digest(start: float, end: float) -> str | None:
             row = await cur.fetchone()
         today = float(row["d"]) if row else 0.0
     closed_sum = sum(float(p["net_pnl"] or 0.0) for p in closed)
-    head = f"🧾 <b>Trades {hhmm(start)}–{hhmm(end)} UTC</b> {stamp()} · {len(opened)} opened · {len(closed)} closed" + (
-        f" · closed {usd(closed_sum)}" if closed else ""
-    )
+    if opened or closed:
+        head = (
+            f"🧾 <b>Trades {hhmm(start)}–{hhmm(end)} UTC</b> {stamp()} · {len(opened)} opened · {len(closed)} closed"
+            + (f" · closed {usd(closed_sum)}" if closed else "")
+        )
+    else:
+        head = f"📊 <b>Report {hhmm(start)}–{hhmm(end)} UTC</b> {stamp()} · no trades in this window"
     blocks = [head] + [opened_block(p) for p in opened] + [closed_block(p) for p in closed]
+    if held:
+        blocks.append("<b>Open positions</b>\n" + "\n".join(open_line(p) for p in held))
     gain = equity - deposits
     unreal = sum(p.unrealized(p.last_mark or p.entry_px) for p in held)
     blocks.append(

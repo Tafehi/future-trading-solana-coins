@@ -86,7 +86,7 @@ def test_settings_file_loads_and_is_paper(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("SETTINGS_FILE", str(DEFAULT_SETTINGS_FILE))
     monkeypatch.delenv("MODE", raising=False)
     s = Settings()
-    assert s.mode == "paper" and s.paper_start_balance == 10_000.0 and s.leverage == 3 and s.digest_minutes == 15
+    assert s.mode == "paper" and s.paper_start_balance == 10_000.0 and s.leverage == 3 and s.digest_minutes == 45
     # User, 2026-11-13: the wallet list is re-graded every 5 minutes, not hourly.
     assert s.jupiter_grade_minutes == 5.0
     # Items 1, 4, 5 in the file (the 90-day Hyperliquid window left with that source, D-19).

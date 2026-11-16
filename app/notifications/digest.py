@@ -1,8 +1,11 @@
-"""The 15-minute trade report and the alarms, each sent at most once.
+"""The Telegram report (every DIGEST_MINUTES, 45 since 2026-11-16) and the alarms, each sent at most once.
 
 - `due_windows`: every complete window after the last one sent (`meta` key `digest:last_end`), at most
   MAX_BACKLOG of them, so a restart neither repeats a window nor floods the chat. The very first run starts at the
   current window (no backfill of history).
+- `run_digest`: windows with a trade are always sent. With DIGEST_ALWAYS, a window without a trade sends the account
+  and open positions too, but after a gap (restart, outage) only the NEWEST such window does: a 6-hour gap is one
+  status report, not eight.
 - `send_alarm`: the same title at most once per ALARM_REPEAT_S, so a stuck problem does not spam.
 """
 
@@ -39,12 +42,14 @@ async def due_windows(now: float | None = None) -> list[tuple[float, float]]:
 
 
 async def run_digest(notifier: Notifier, *, now: float | None = None) -> int:
-    """Send every due window that had a trade. Each window is marked done before sending. Returns messages sent."""
+    """Send the due windows (see the module text). Each window is marked done before sending. Returns messages sent."""
     sent = 0
-    for start, end in await due_windows(now):
+    windows = await due_windows(now)
+    for i, (start, end) in enumerate(windows):
         async with store.session() as conn:
             await meta.put(conn, LAST_END_KEY, end)
-        text = await messages.digest(start, end)
+        newest = i == len(windows) - 1
+        text = await messages.digest(start, end, always=settings.digest_always and newest)
         if text is None:
             continue
         if await notifier.send_blocks(text.split("\n\n")):

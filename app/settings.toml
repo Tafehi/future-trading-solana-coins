@@ -43,4 +43,5 @@ JUPITER_HISTORY_CALLS_PER_DAY = 20000  # Chainstack calls a day for item 1 (plan
 
 # ── Telegram ─────────────────────────────────────────────────────────────────────────────────────
 BOT_NAME = "Jupiter-KuCoin"    # both bots post to one chat (split 2026-11-14): "[PAPER] Jupiter-KuCoin"
-DIGEST_MINUTES = 15            # user, 2026-11-13: a report every 15 min, only when something was traded
+DIGEST_MINUTES = 45            # user, 2026-11-16: a report every 45 min (was 15, trades only)
+DIGEST_ALWAYS = true           # user, 2026-11-16: send it even when nothing traded (account + open positions)
