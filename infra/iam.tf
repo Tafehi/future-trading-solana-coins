@@ -5,6 +5,13 @@ resource "aws_iam_role" "bot" {
   name                 = "${local.prefix}-role"
   permissions_boundary = "arn:aws:iam::${local.account_id}:policy/gha-workload-boundary"
 
+  # The shared history bucket opts this role in by these tags (Pump-fun-S3 D-131): its policy lists no project, so
+  # THIS repo owns this bot's access. read = every file but <chain>/state/; write = futures/ only, never delete.
+  tags = {
+    "bigdata-history-read"  = "yes"
+    "bigdata-history-write" = "futures"
+  }
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -81,10 +88,10 @@ resource "aws_iam_role_policy" "s3_data" {
 }
 
 # The futures recordings (app/record/recorder.py) go to the shared bucket under futures/ only (this bot's own folders:
-# futures/jupiter/ and futures/solana-bot/). PutObject only: the host timer `solana-future-coin-spool` uploads and never deletes or
-# reads there. The shared bucket's OWN policy must also exempt solana-future-coin-role for futures/*; until it does, uploads
-# get AccessDenied and the files wait in the spool (BUG B-4). That policy was in Tafehi/Pump-fun-S3 infra/history.tf,
-# which is being removed from AWS (2026-11-14), so it needs a new owner first.
+# futures/jupiter/ and futures/solana-bot/). PutObject only: the host timer `solana-future-coin-spool` uploads and never
+# deletes there. The shared bucket's own policy lets this role write because of the role's tag
+# `bigdata-history-write = futures` above (Pump-fun-S3 D-131, no list there); until that policy is deployed, uploads get
+# AccessDenied and the files wait in the spool (BUG B-4).
 resource "aws_iam_role_policy" "shared_futures_write" {
   name = "${local.prefix}-shared-futures-write"
   role = aws_iam_role.bot.id
@@ -95,5 +102,27 @@ resource "aws_iam_role_policy" "shared_futures_write" {
       Action   = "s3:PutObject"
       Resource = "arn:aws:s3:::${local.shared_bucket}/futures/*"
     }]
+  })
+}
+
+# Read the shared history: solana/ (pump.fun / PumpSwap days, wallet PnL) and futures/ (both futures bots' recordings).
+# Allowed by the role's tag `bigdata-history-read = yes`; the bucket policy still denies <chain>/state/.
+resource "aws_iam_role_policy" "shared_history_read" {
+  name = "${local.prefix}-shared-history-read"
+  role = aws_iam_role.bot.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "s3:GetObject"
+        Resource = "arn:aws:s3:::${local.shared_bucket}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = "arn:aws:s3:::${local.shared_bucket}"
+      },
+    ]
   })
 }

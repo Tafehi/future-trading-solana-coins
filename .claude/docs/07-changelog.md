@@ -112,3 +112,10 @@ repo became `future-trading-kucoins` (Hyperliquid -> KuCoin); this one is `futur
 - `DIGEST_MINUTES = 45`, new `DIGEST_ALWAYS = true`: every window sends a report; one with no trade says "no trades in
   this window" and lists the open positions and the account. After a gap only the newest empty window reports. Every
   report has an "Open positions" block. `DIGEST_MINUTES` must divide 1440. 3 new tests + 3 mutants (as the KuCoin bot).
+
+## 2026-11-16 — Shared history bucket: this bot opts in by its own role tags (Pump-fun-S3 D-131)
+
+- `infra/iam.tf`: the role carries `bigdata-history-read = yes` and `bigdata-history-write = futures`; new
+  `shared_history_read` grants `s3:GetObject` on the bucket and `s3:ListBucket`. The bucket policy lists no project
+  (user: each project owns its access). Test `app/tests/test_shared_bucket_access.py`, red on the old file.
+- Works after Pump-fun-S3's manual deploy (the live policy still lists only `futcoins-bot-role`), then this repo's.
