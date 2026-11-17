@@ -14,6 +14,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Tests deliberately use hardcoded fake addresses and keys.
 "tests/*" = ["S105", "S106"]
+# The wallet tracer compares crypto TOKEN names ("SOL", "USDC"); S105 reads `token == "SOL"` as a hardcoded password.
+"tools/wallet_trace/*" = ["S105"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

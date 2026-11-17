@@ -6,14 +6,8 @@ __pycache__/
 .pytest_cache/
 .env
 .env.*
-# Runtime folders at the REPO ROOT only. A bare `data/` also matched the source package app/data/ and kept it out of
-# git (DEBUG D-4); scripts/checks.py `source-not-ignored` fails the build if that ever happens again.
-/data/
-/logs/
-infra/.terraform/
-infra/.terraform.lock.hcl.bak
-infra/tfplan
-*.tfstate
-*.tfstate.*
+# Real addresses: case data, tracer reports and cache. Never committed (PLAN §8).
 audit/
 .DS_Store
+# Log output of the tracer (utils/logging.py writes logs/app.log).
+/logs/

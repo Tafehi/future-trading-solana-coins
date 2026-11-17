@@ -119,3 +119,56 @@ repo became `future-trading-kucoins` (Hyperliquid -> KuCoin); this one is `futur
   `shared_history_read` grants `s3:GetObject` on the bucket and `s3:ListBucket`. The bucket policy lists no project
   (user: each project owns its access). Test `app/tests/test_shared_bucket_access.py`, red on the old file.
 - Works after Pump-fun-S3's manual deploy (the live policy still lists only `futcoins-bot-role`), then this repo's.
+
+## 2026-11-17 — PLAN.md: wallet tracer (plan only, no code)
+
+- **Why (user):** holder wallets on the Hyperliquid leaderboard show big PnL with $0 volume; the user suspects hidden
+  bot wallets trade and send them the profit, and wants a tool that finds them, for futures AND spot, on Hyperliquid
+  and Solana. A manual case study (11+ wallets, from the `future-trading-kucoins` session) found no bot: an airdrop,
+  staked, sold slowly and spread over fresh wallets.
+- **What:** `PLAN.md` is the brief for the session that builds `app/tools/wallet_trace/` (read-only, laptop only, never
+  imported by `main.py`): checks and where each shows, golden verdicts from the case, classification and twin rules,
+  phases 0-6, anonymised fixtures (no address or 64-hex hash in git).
+- Case data (raw API answers, full addresses, the prototype script) is in `audit/wallet-trace-case-2026-11-17/`
+  (git-ignored).
+
+## 2026-11-17 — Wallet tracer built (PLAN phases 0-5, D-25)
+
+- **Why (user):** "change the whole project using PLAN.md": add the tracer, keep the bot as it is; 2 calls/s as PLAN.md
+  says; free public Solana RPC only; labels in `audit/`.
+- **What:** `app/tools/wallet_trace/` (doc 09): Hyperliquid info client with time paging, weight budget and 429 wait;
+  balance replay per token (`INCOMPLETE` when history and live balance disagree); classify rules 1-9 with reasons;
+  twin scoring; breadth-first walk with stop list and call budget; Markdown/CSV/tree report; Solana transfers, swaps
+  (pump.fun, PumpSwap, Raydium, Jupiter), funder, Jupiter Perps episodes via the bot's own decoder.
+- **Checked against docs + real answers (2026-11-17):** Hyperliquid paging (500 / 2000 / 10,000), weights, system
+  addresses, `userRole`, `vaultDetails`; Solana `jsonParsed` shape, transaction version 1, public-RPC throttle; every
+  program id and mint executable / a mint on mainnet.
+- **Found on real data:** the ledger misses staking moves (DEBUG D-8), fills miss TWAP slices (D-9), a liquidation
+  takes the margin with no row, airdrop dust vanishes. Each is handled, tested and mutated. CASH-OUT now measures
+  money-in to money-out; shared airdrops count as one clue (max 3 points) and never make a twin alone.
+- **Bug fixed in the bot's code:** `SolanaRpc` errors could carry the RPC URL with its key (DEBUG D-10).
+- **Result:** the golden test reproduces every PLAN §2.2 verdict, the twins, and the funder's HYPE sum (0.91567001);
+  no LIKELY BOT. A live depth-2 run from the staking holder: 11 wallets, 190 calls, no bot. A live Jupiter trader is
+  `PERP TRADER`; a live pump.fun trader gets `SPOT TRADER` with its swaps.
+- Tests: `test_wallet_trace_{golden,rules,tool,sol}.py`; fixtures `wallet_trace_hl_case.json` and
+  `wallet_trace_sol_case.json` from `scripts/make_trace_fixtures.py` (anonymised). `ALLOWED_PUBLIC_KEYS` lists the
+  public Solana program ids and mints. Lint: S105 off for `tools/wallet_trace/*` (it reads `token == "SOL"` as a
+  password).
+
+## 2026-11-17 — The copy-trading bot is removed; the repo is the wallet tracer (D-26)
+
+- **Why (user):** "make sure all codes related to the old bot is removed and only the newly added ones base on the new
+  plan.md", then push. The user destroys the AWS infrastructure (`terraform destroy`, BUG B-18).
+- **Removed:** the bot's packages and tools, 15 bot test files and the KuCoin/Hyperliquid fixtures, `infra/`,
+  `.github/workflows/` (no CI deploy any more: a push touches no AWS), `hostSetup.sh`, `statusCheck.sh`,
+  `docker-compose.yml`, `app/Dockerfile`, `app/settings.toml`, `scripts/collect_evidence.sh`, docs 02/03/04/06/08.
+  Dependencies cut to `httpx` + `tenacity`.
+- **Kept and trimmed:** `data/solana_rpc.py` (no bot settings; the caller passes the URL), `data/http.py` (no hot-path
+  reserve), `data/jupiter_perps.py` / `jupiter_events.py` and their real-data tests, `utils/logging.py` (Chainstack
+  and `api-key=` redaction only).
+- **New guards:** `test_no_trading_or_bot_code_comes_back` (red on the first run: two leftover bot words), the tool
+  imports with no env; `scripts/checks.py` rewritten for this repo with a new `case-addresses` check (no real case
+  wallet outside `audit/`). `precommit.sh` runs the checks, lint, types, tests, the CLI and the mutants.
+- **For the destroy:** `audit/old-bot/` holds a copy of `infra/` plus the three host files it reads (git-ignored).
+- **Explained:** how the removed bot worked, with diagrams, in `audit/bot-explained/` (local only).
+

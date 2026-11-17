@@ -2,9 +2,9 @@
 
 - Idempotent: `_configured` stops a second setup adding a duplicate handler (every line would double).
 - The file handler fails soft: if the log file cannot be written, log to stdout only and keep running.
-- No credential reaches a log line. The Helius key, the heartbeat URL and the Telegram bot token travel
-  inside URLs, and `httpx` logs URLs at INFO. So URL-logging libraries run at WARNING, and every handler
-  has `RedactSecrets` as a second guard (`BUG.md` T-49).
+- No credential reaches a log line. A Solana RPC passed with `--rpc-url` (Chainstack puts its key in the path) or any
+  `api-key=` URL travels inside a URL, and `httpx` logs URLs at INFO. So URL-logging libraries run at WARNING, and
+  every handler has `RedactSecrets` as a second guard.
 """
 
 import logging
@@ -20,8 +20,8 @@ _configured = False
 # Credential shapes that travel inside URLs. Each keeps enough to say WHICH secret it was.
 _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(api[-_]key=)[^&\s\"']+", re.IGNORECASE), r"\1***"),
-    (re.compile(r"(hc-ping\.com/)[A-Za-z0-9-]+"), r"\1***"),
-    (re.compile(r"(/bot)\d+:[A-Za-z0-9_-]+"), r"\1***"),
+    # Chainstack puts the key in the URL path: https://<node>.core.chainstack.com/<key>
+    (re.compile(r"(\.chainstack\.com/)[A-Za-z0-9_-]+"), r"\1***"),
 )
 
 # Libraries that log a request URL at INFO. Raised to WARNING so their per-request lines never exist.

@@ -1,11 +1,10 @@
-"""Shared HTTP plumbing for the public data clients.
+"""Shared HTTP plumbing for the wallet tracer's public data clients.
 
-- `RateLimiter` paces plain requests per second (KuCoin's public pool).
-- `WeightBudget` paces Hyperliquid's weighted limit: 1200 weight a minute per IP, where a position poll
-  costs 2 and a fill history costs 20 plus 1 per 20 items. Waiting is better than a 429 that blocks the
-  IP, because the signal loop shares the same budget.
-- `get_json` / `post_json` retry transient failures (timeouts, 429, 5xx) with backoff and raise
-  `DataError` when they give up, so callers handle one exception type.
+- `RateLimiter` paces plain requests per second (the free Solana RPC, the Hyperliquid cap).
+- `WeightBudget` paces Hyperliquid's weighted limit (1200 weight a minute per IP; most info calls weigh 20, the
+  list calls 1 more per 20 items). Waiting is better than a 429 that blocks the IP.
+- `_request` retries transient failures (timeouts, 429, 5xx) with backoff and raises `DataError` when it gives up,
+  so callers handle one exception type.
 """
 
 import asyncio
@@ -15,10 +14,6 @@ from typing import Any
 
 import httpx
 from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential
-
-from app.utils.logging import get_logger
-
-logger = get_logger(__name__)
 
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 
@@ -50,15 +45,11 @@ class RateLimiter:
 
 
 class WeightBudget:
-    """A sliding 60-second window of spent weight. `spend` waits until `weight` fits.
+    """A sliding 60-second window of spent weight. `spend` waits until `weight` fits; `add` records weight learned
+    after the answer (per-item charges)."""
 
-    `reserve_for_hot` keeps part of the budget for the signal poller: a cold-path caller (grading) may
-    only fill the window up to `limit - reserve_for_hot`.
-    """
-
-    def __init__(self, per_minute: int, *, reserve_for_hot: int = 0) -> None:
+    def __init__(self, per_minute: int) -> None:
         self.limit = per_minute
-        self.reserve = min(reserve_for_hot, per_minute - 1)
         self._spent: deque[tuple[float, int]] = deque()
         self._lock = asyncio.Lock()
 
@@ -68,13 +59,12 @@ class WeightBudget:
             self._spent.popleft()
         return sum(w for _, w in self._spent)
 
-    async def spend(self, weight: int, *, hot: bool = False) -> None:
-        cap = self.limit if hot else self.limit - self.reserve
-        weight = min(weight, cap)
+    async def spend(self, weight: int) -> None:
+        weight = min(weight, self.limit)
         async with self._lock:
             while True:
                 now = time.monotonic()
-                if self.used(now) + weight <= cap:
+                if self.used(now) + weight <= self.limit:
                     self._spent.append((now, weight))
                     return
                 oldest = self._spent[0][0] if self._spent else now
@@ -108,23 +98,3 @@ async def _request(
     except (_Retryable, httpx.HTTPError) as exc:
         raise DataError(f"{method} {url}: {type(exc).__name__}: {exc}") from exc
     raise DataError(f"{method} {url}: no attempt made")  # pragma: no cover — tenacity always attempts
-
-
-async def get_json(client: httpx.AsyncClient, url: str, *, params: dict[str, Any] | None = None) -> Any:
-    resp = await _request(client, "GET", url, params=params)
-    if resp.status_code != 200:
-        raise DataError(f"GET {url}: HTTP {resp.status_code}: {resp.text[:200]}")
-    try:
-        return resp.json()
-    except ValueError as exc:
-        raise DataError(f"GET {url}: unreadable JSON: {exc}") from exc
-
-
-async def post_json(client: httpx.AsyncClient, url: str, body: dict[str, Any]) -> Any:
-    resp = await _request(client, "POST", url, json=body)
-    if resp.status_code != 200:
-        raise DataError(f"POST {url} {body.get('type', '')}: HTTP {resp.status_code}: {resp.text[:200]}")
-    try:
-        return resp.json()
-    except ValueError as exc:
-        raise DataError(f"POST {url}: unreadable JSON: {exc}") from exc

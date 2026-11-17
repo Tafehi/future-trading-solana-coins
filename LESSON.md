@@ -2,7 +2,7 @@
 
 Back to [CLAUDE.md](CLAUDE.md).
 
-L-1 to L-10 are inherited from `future-trading-coins` (the parent repo, before the 2026-11-14 split).
+L-1 to L-10 come from the copy-trading bot (removed 2026-11-17, D-26); they stay because the lessons still hold.
 
 - **L-1 — An IDL is not the account.** Field sizes from an IDL can differ from what lives on-chain (padding, added
   fields). Before filtering by `dataSize`, read a few real accounts. (DEBUG D-2)
@@ -34,3 +34,10 @@ L-1 to L-10 are inherited from `future-trading-coins` (the parent repo, before t
   old prefix is not enough: shared places keep the old meaning silently. Here three were shared: the Telegram chat (fix:
   `BOT_NAME` in every message, D-21), the recordings prefix `futures/` (fix: own `solana-bot/` folder, D-20) and the
   KuCoin account and key (not fixable in code: BUG B-3 blocks live). Each fix ships a test and a mutant.
+- **L-11 — A balance that adds up is the only proof a history is complete.** The wallet tracer replays every movement
+  and compares the sum with the live balance. That one check found three gaps no documentation mentions: staking moves
+  missing from the ledger (DEBUG D-8), TWAP fills missing from the fills list (D-9), and a liquidation that takes the
+  margin with no row at all. A count of rows proves nothing; a sum that matches to 8 decimals does.
+- **L-12 — "Strip the URL" must be tested with the URL inside the error text.** `split(':')[-1]` looked safe on an
+  "HTTP 429" message and leaked the key on a connection error (DEBUG D-10). Keep the type of the failure, never its
+  text.
