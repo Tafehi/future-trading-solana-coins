@@ -96,6 +96,20 @@ mut app/tools/wallet_trace/sol_profile.py '                lam += float((tx.get(
 mut app/data/solana_rpc.py 'else type(cause).__name__ if cause else' 'else str(cause) if cause else' 'never_carries_the_url'
 mut $PR '        if token == "USDC" and liquidated:' '        if False:' 'liquidation_gap'
 mut $H '                if "429" not in str(exc) or attempt == S.HL_429_RETRIES:' '                if True:' 'lasting_429'
+# 2026-11-17 (D-27): secrets from Secrets Manager and the per-run Telegram summary
+SE=app/tools/wallet_trace/secrets.py
+TG=app/tools/wallet_trace/telegram.py
+mut $SE '    if use_aws and not all(vals.values()):' '    if use_aws:' 'env_alone_never_calls_aws'
+mut $SE '                if not vals[k]:
+                    vals[k] = _clean(data.get(k))' '                vals[k] = _clean(data.get(k))' 'env_wins'
+mut $SE 'return "" if s.lower() in UNSET else s' 'return s' 'env_wins_and_unset'
+mut $SE 'problem = f"could not read secret {name} ({type(exc).__name__}); public RPC, no Telegram"' 'problem = f"could not read secret {name} ({exc})"' 'leaks_nothing'
+mut $TG 'return f"Telegram not reached ({type(exc).__name__})"' 'return f"Telegram not reached ({exc})"' 'never_show_the_token'
+mut $TG 'links.short(s) for s in starts' 's for s in starts' 'summary_text'
+mut $TG 'if len(text) <= MAX_TEXT else' 'if True else' 'length_limit'
+mut app/tools/wallet_trace/__main__.py '    if sec.solana_rpc_url:' '    if False:' 'rpc_choice'
+mut app/tools/wallet_trace/__main__.py '    if not a.no_telegram:' '    if True:' 'sends_one_summary'
+
 rm -f "$backup"
 echo "mutants survived: $survived"
 exit "$survived"

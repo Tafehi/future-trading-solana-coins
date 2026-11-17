@@ -131,7 +131,19 @@ async def test_an_rpc_error_never_carries_the_url(tmp_path: Any, monkeypatch: py
     assert "k" * 32 not in str(err.value) and "node.example" not in str(err.value)
 
 
-def test_the_default_rpc_is_the_free_public_one() -> None:
+def test_rpc_choice_flag_then_secret_then_public() -> None:
+    """D-27: --rpc-url wins, then SOLANA_RPC_URL from the secret, then the free public RPC. The label hides the URL."""
     from app.tools.wallet_trace import __main__ as cli
+    from app.tools.wallet_trace import secrets as sm
+    from app.tools.wallet_trace import settings as st
 
-    assert cli.parse(["x", "--chain", "sol"]).rpc_url == "https://api.mainnet-beta.solana.com"
+    keyed = "https://node.example/" + "k" * 32
+    with_secret = sm.Secrets(solana_rpc_url=keyed, source="secrets-manager:solana-future-bot")
+    url, label, max_tx = cli.rpc_choice(cli.parse(["x", "--chain", "sol"]), with_secret)
+    assert url == keyed and "k" * 32 not in label and max_tx == st.SOL_MAX_TX_PER_WALLET_PAID
+    url, label, _ = cli.rpc_choice(
+        cli.parse(["x", "--chain", "sol", "--rpc-url", "https://other.example/"]), with_secret
+    )
+    assert url == "https://other.example/" and label == "--rpc-url"
+    url, label, max_tx = cli.rpc_choice(cli.parse(["x", "--chain", "sol"]), sm.Secrets())
+    assert url == "https://api.mainnet-beta.solana.com" and max_tx == st.SOL_MAX_TX_PER_WALLET

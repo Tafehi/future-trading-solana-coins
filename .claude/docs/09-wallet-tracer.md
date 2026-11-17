@@ -5,7 +5,8 @@ Back to the index: [CLAUDE.md](../../CLAUDE.md). The brief is [PLAN.md](../../PL
 A **read-only research tool for the laptop**: for any wallet it says what kind of wallet it is, where its money came from
 and went (N steps), which wallets have the same owner, and whether it trades futures, spot or both. Hyperliquid and
 Solana. Since 2026-11-17 it is the whole repo: the copy-trading bot was removed (D-26), and
-`test_no_trading_or_bot_code_comes_back` keeps it read-only. No AWS, no Telegram, no key.
+`test_no_trading_or_bot_code_comes_back` keeps it read-only. Each run sends a short summary to Telegram; the token
+and the Chainstack Solana URL come from AWS Secrets Manager (D-27, section below).
 
 ## Run it
 
@@ -14,9 +15,26 @@ Solana. Since 2026-11-17 it is the whole repo: the copy-trading bot was removed 
 .venv/bin/python -m app.tools.wallet_trace <solana-addr> --chain sol --depth 1 --top 3
 #   --max-calls 500   stop after this many API calls; the report lists the wallets not visited
 #   --refresh         ignore the cache (answers are still saved)
-#   --rpc-url URL     another Solana RPC (default: the free public one; never printed)
+#   --rpc-url URL     another Solana RPC (default: SOLANA_RPC_URL from the secret, else the free public one)
 #   --sol-usd PRICE   SOL price for USD values (default: Hyperliquid's public SOL mid)
+#   --no-telegram     no Telegram summary        --no-aws   do not read Secrets Manager (env vars still count)
+#   --secret NAME     another secret (default solana-future-bot)
 ```
+
+## Telegram and secrets (D-27)
+
+- **Where the keys live:** AWS Secrets Manager, secret `solana-future-bot`, region eu-central-1, a JSON object. The
+  tracer reads three keys: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SOLANA_RPC_URL`. Everything else in it is
+  ignored. It reads with **your** AWS login (the default profile, or `AWS_PROFILE`), `get_secret_value` only.
+- **Order:** env vars first (`TELEGRAM_BOT_TOKEN=... python -m app.tools.wallet_trace ...` works with no AWS), then
+  the secret for whatever is missing. If the secret cannot be read, the run goes on: public RPC, no Telegram, and one
+  line says why (the error TYPE only).
+- **The message:** one per run: verdict counts, LIKELY BOT wallets with their first reason, same-owner groups, the
+  INCOMPLETE / not-visited / failed counts, and the path of the full report on the laptop. Short addresses only
+  (`0xabab…ab01`); full addresses never leave `audit/`. HTML, max 4,096 characters.
+- **Solana with Chainstack:** the URL from the secret is used unless `--rpc-url` is given; 4 calls/s and 300
+  transactions per wallet (public RPC: 1/s and 100). The screen says which RPC, never the URL.
+- **Never:** a token or URL in a log line, an error, or git. Failures report the HTTP status or exception type.
 
 - Output: `audit/wallet_trace/<UTC time>/report.md`, `edges.csv`, `tree.txt`. Cache:
   `audit/wallet_trace/cache/<chain>/<address>/<query>.json`. Both git-ignored (real addresses); the CLI and the cache
@@ -41,6 +59,8 @@ Solana. Since 2026-11-17 it is the whole repo: the copy-trading bot was removed 
 | `links.py` | transfer edges, twin score and groups |
 | `walk.py` | breadth-first walk with depth, top-N, stop list, call budget |
 | `report.py`, `__main__.py` | report files; CLI |
+| `secrets.py` | Telegram token, chat id and Solana URL from env or AWS Secrets Manager (read-only) |
+| `telegram.py` | the per-run summary text and the `sendMessage` call |
 
 ## Rules learned on real data (each has a test and a mutant)
 

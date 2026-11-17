@@ -2,6 +2,7 @@
 that the repo stays a read-only tool. No network: every source takes an httpx.MockTransport."""
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -224,14 +225,19 @@ def test_the_tool_imports_with_no_settings_or_secrets() -> None:
 
 
 def test_no_trading_or_bot_code_comes_back() -> None:
-    """Nothing places an order or talks to an exchange's private API; the old bot's packages stay gone."""
+    """Nothing places an order or talks to an exchange's private API; the old bot's packages stay gone. Telegram and
+    AWS Secrets Manager are allowed since D-27 (user, 2026-11-17), but only in their own modules, and AWS only reads."""
     gone = ["app/main.py", "app/config.py", "app/trading", "app/jobs", "app/core", "app/notifications", "app/record",
             "app/db", "app/api", "infra", ".github/workflows/deploy.yml"]  # fmt: skip
     assert [g for g in gone if (REPO / g).exists()] == []
-    words = ("kucoin", "telegram", "place_order", "/api/v1/orders", '"exchange"', "boto3")
-    hits = [f"{p.relative_to(REPO)}: {w}" for p in (REPO / "app").rglob("*.py") if "tests" not in p.parts
-            for w in words if w in p.read_text().lower()]  # fmt: skip
+    words = ("kucoin", "place_order", "/api/v1/orders", '"exchange"', "sign_transaction", "private_key")
+    src = [p for p in (REPO / "app").rglob("*.py") if "tests" not in p.parts]
+    hits = [f"{p.relative_to(REPO)}: {w}" for p in src for w in words if w in p.read_text().lower()]
     assert hits == []
+    aws = sorted(str(p.relative_to(REPO)) for p in src if "boto3" in p.read_text())
+    assert aws == ["app/tools/wallet_trace/secrets.py"]
+    calls = set(re.findall(r"client\.([a-z_]+)\(", (REPO / "app/tools/wallet_trace/secrets.py").read_text()))
+    assert calls == {"get_secret_value"}, calls  # read-only: no put_/create_/delete_ call on AWS
 
 
 def test_spot_meta_maps_pair_names() -> None:

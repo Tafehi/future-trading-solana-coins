@@ -8,7 +8,9 @@ futures and spot. For any wallet it says:
 3. which other wallets probably have the same owner ("twins");
 4. whether it trades futures, spot or both.
 
-It never trades, holds no key, and runs on a laptop. Real addresses stay in `audit/` (git-ignored).
+It never trades and runs on a laptop. After each run it sends a short summary to Telegram; the Telegram token and
+the Solana RPC URL are read from AWS Secrets Manager (secret `solana-future-bot`) with your own AWS login. Real
+addresses stay in `audit/` (git-ignored).
 
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r app/requirements-dev.txt

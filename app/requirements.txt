@@ -1,2 +1,5 @@
 httpx>=0.27.0
 tenacity>=9.0.0
+# Reads the Telegram token and the Solana RPC URL from AWS Secrets Manager (D-27). Optional at run time:
+# without it the tracer still runs on the public RPC, with no Telegram.
+boto3>=1.35

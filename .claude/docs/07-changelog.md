@@ -171,4 +171,22 @@ repo became `future-trading-kucoins` (Hyperliquid -> KuCoin); this one is `futur
   wallet outside `audit/`). `precommit.sh` runs the checks, lint, types, tests, the CLI and the mutants.
 - **For the destroy:** `audit/old-bot/` holds a copy of `infra/` plus the three host files it reads (git-ignored).
 - **Explained:** how the removed bot worked, with diagrams, in `audit/bot-explained/` (local only).
+- **Destroyed (user, 2026-11-17):** `terraform destroy` from `audit/old-bot/infra` removed all 21 resources (box
+  `i-05ad4a52b74d57842`, bucket `solana-future-coin-data-…` with its backups, ECR repo, role, profile, SG, policies).
+  It first stopped on `prevent_destroy`; the local copy was changed to allow it (`force_destroy` on the bucket,
+  `force_delete` on the ECR repo). The shared bucket's `futures/` recordings were not touched. Left: the secret
+  `solana-future-bot` (hand-made; BUG B-18).
+
+## 2026-11-17 — Telegram summary per run; keys from AWS Secrets Manager (D-27)
+
+- **Why (user):** "i need report on the telegram and the api is keep in the secret manager". Choices: a summary each
+  run; read the tokens from Secrets Manager; use Chainstack for Solana; keep the secret `solana-future-bot`.
+- **What:** `wallet_trace/secrets.py` (env first, then `get_secret_value` on `solana-future-bot`; never fatal, never
+  prints a value), `wallet_trace/telegram.py` (summary text with short addresses only; `sendMessage`, HTML, 4,096
+  limit; failures report status or type only), CLI flags `--no-telegram`, `--no-aws`, `--secret`. Solana uses the
+  secret's `SOLANA_RPC_URL` at 4 calls/s and 300 tx per wallet; `--rpc-url` still wins. `boto3` added to requirements.
+- **Tests:** `test_wallet_trace_notify.py` (fake Secrets Manager and Telegram; a run sends exactly one summary;
+  `--no-telegram` sends none; the token never appears in an error), RPC choice in `test_wallet_trace_sol.py`; the
+  read-only guard now allows boto3 only in `secrets.py` and only `get_secret_value`. 9 new mutants, all killed.
+- BUG B-18 closed (the secret stays on purpose). New: B-23 (first real secret read is the user's), B-24 (Chainstack pace).
 

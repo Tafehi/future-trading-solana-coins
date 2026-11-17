@@ -79,6 +79,10 @@ TWIN_MIN_SCORE = 6  # "same owner, very likely"
 SOL_DEFAULT_RPC = "https://api.mainnet-beta.solana.com"  # free public RPC; never the bot's SOLANA_RPC_URL by default
 SOL_CALLS_PER_SECOND = 1.0  # measured 2026-11-17: ~2/s drew 429 after ~10 getTransaction calls, 1/s passed 20 in a row
 SOL_MAX_TX_PER_WALLET = 100  # newest transactions decoded per wallet (plus the oldest few, for the funder)
+# With the Chainstack URL from the secret (user, 2026-11-17, D-27). Chainstack allowed 5 requests/s for filtered
+# getProgramAccounts (docs.chainstack.com/docs/limits, read 2026-11-13 for the removed bot); 4/s keeps a margin.
+SOL_CALLS_PER_SECOND_PAID = 4.0
+SOL_MAX_TX_PER_WALLET_PAID = 300
 SOL_OLDEST_TX = 3
 SOL_SIG_PAGE = 1000
 SOL_MAX_SIG_PAGES = 3  # more than 3,000 transactions: the funder is out of reach (noted in the report)
