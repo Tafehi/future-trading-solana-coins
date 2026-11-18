@@ -13,14 +13,22 @@ The first poll, or one after a gap of more than BASELINE_GAP_POLLS polls, is a B
 signal. `verify_known` (hourly, and after a gap) re-reads every stored row with getMultipleAccounts, so a close
 missed while the bot was down still becomes an episode.
 
-Grading (`grade_owners`), once an owner has JUPITER_MIN_RECORD_DAYS of recording and JUPITER_MIN_EPISODES closed
-episodes. No account value is public, so the Hyperliquid rules are mapped like this (DECISIONS D-6):
+Grading (`grade_owners`), once an owner has JUPITER_MIN_RECORD_DAYS of record and JUPITER_MIN_EPISODES closed
+episodes (2026-11-18, D-29: 1 day and 8, were 14 days and 15; the record now comes from Jupiter's trade API for every
+owner, so almost nobody waits). No account value is public, so the Hyperliquid rules are mapped like this (D-6):
 - drawdown = the largest fall of cumulative episode PnL, divided by the owner's largest position size
 - GOLD = PF >= GOLD_MIN_PROFIT_FACTOR, drawdown <= GOLD_MAX_DRAWDOWN, total PnL > 0, no single episode above
   MAX_BIGGEST_WIN_SHARE of the profit, median hold not a scalper's.
+- Fewer than JUPITER_FULL_PROOF_EPISODES (15) closed episodes: the profit factor NEEDED for GOLD and SILVER is
+  multiplied by sqrt(15 / episodes) (8 episodes: GOLD needs 2.46, SILVER 1.92), a wallet with no loss yet counts as if
+  it had one loss of its average size (PF = its episode count), and its copy weight is capped at
+  JUPITER_SMALL_SAMPLE_MAX_WEIGHT. From 15 episodes on, nothing changes.
+- A grade is redone after every new close AND at least every JUPITER_REGRADE_HOURS, so a slow, good wallet does not
+  fall out of the pool when its 72-hour-old grade expires (TRACK_MAX_GRADE_AGE_HOURS).
 The best JUPITER_MAX_TRACKED GOLD owners are tracked; their OPENs reach the copier like Hyperliquid ones.
 """
 
+import math
 import statistics
 import time
 from dataclasses import dataclass
@@ -215,27 +223,47 @@ def grade_episodes(
         return wg.Grade(style, wg.BLACK, "scalper style cannot be copied with a delay"), st, dd
     if st.total_pnl <= 0:
         return wg.Grade(style, wg.BLACK, f"lost money over {st.trades} episodes"), st, dd
-    pf = st.profit_factor
+    pf, scale = proof(st)
+    need_gold, need_silver = settings.gold_min_profit_factor * scale, settings.silver_min_profit_factor * scale
     figures = f"{st.trades} episodes, PF {pf or 0:.2f}, DD {dd or 0:.0%}, {recorded_days:.0f}d recorded"
+    if scale > 1:
+        figures += f" (few trades: GOLD needs PF {need_gold:.2f}, SILVER {need_silver:.2f})"
     if st.biggest_win_share is not None and st.biggest_win_share > settings.max_biggest_win_share:
         return wg.Grade(style, wg.BRONZE, f"{figures}: one trade made {st.biggest_win_share:.0%} of the profit"), st, dd
-    if pf is not None and pf >= settings.gold_min_profit_factor and dd is not None and dd <= settings.gold_max_drawdown:
+    if pf is not None and pf >= need_gold and dd is not None and dd <= settings.gold_max_drawdown:
         return wg.Grade(style, wg.GOLD, figures), st, dd
-    if pf is not None and pf >= settings.silver_min_profit_factor:
+    if pf is not None and pf >= need_silver:
         return wg.Grade(style, wg.SILVER, figures), st, dd
     return wg.Grade(style, wg.BRONZE, figures), st, dd
 
 
+def proof(st: ws.WalletStats) -> tuple[float | None, float]:
+    """(profit factor to judge, how much stronger it must be) for a record of `st.trades` episodes (D-29).
+
+    From JUPITER_FULL_PROOF_EPISODES on: the plain PF and 1.0. Below it the needed PF grows as sqrt(full / trades),
+    and a record with no loss yet counts as if it had one loss of its average size: PF = trades (all wins W, the
+    average |PnL| W / n, so W / (W / n) = n), instead of the 99 cap that would pass any lucky streak."""
+    full = settings.jupiter_full_proof_episodes
+    pf = st.profit_factor
+    if st.trades >= full or st.trades <= 0:
+        return pf, 1.0
+    if pf is not None and pf >= ws.PF_CAP:
+        pf = float(st.trades)
+    return pf, math.sqrt(full / st.trades)
+
+
 async def _owners_to_grade(at: float) -> list[tuple[str, float]]:
-    """(owner, history start) for owners with enough history and a new episode since their last grade."""
+    """(owner, history start) for owners with enough history and a new episode since their last grade, or a grade
+    older than JUPITER_REGRADE_HOURS (D-29: a slow wallet must not drop out when its grade expires)."""
     since = at - settings.jupiter_min_record_days * 86400
     async with store.session() as conn:
         async with conn.execute(
             "SELECT o.owner, MIN(o.first_seen, COALESCE(o.history_from, o.first_seen)) AS start, COUNT(e.id) AS n, "
             "MAX(e.closed_at) AS last_close, w.graded_at AS graded_at FROM jup_owners o "
             "JOIN jup_episodes e ON e.owner = o.owner LEFT JOIN wallets w ON w.address = o.owner "
-            "GROUP BY o.owner HAVING start <= ? AND n >= ? AND (graded_at IS NULL OR last_close > graded_at)",
-            (since, settings.jupiter_min_episodes),
+            "GROUP BY o.owner HAVING start <= ? AND n >= ? "
+            "AND (graded_at IS NULL OR last_close > graded_at OR graded_at < ?)",
+            (since, settings.jupiter_min_episodes, at - settings.jupiter_regrade_hours * 3600),
         ) as cur:
             return [(str(r["owner"]), float(r["start"])) for r in await cur.fetchall()]
 
@@ -266,6 +294,8 @@ async def grade_owners(*, now: float | None = None) -> int:
         window = min(recorded, settings.weight_window_days)
         losses = ws.recent_losses(eps, now_ms=now_ms, days=window, equity=0.0)
         weight = wg.copy_weight(wg.losses_per_month(losses, window))
+        if st.trades < settings.jupiter_full_proof_episodes:  # a short record copies small (D-29)
+            weight = min(weight, settings.jupiter_small_sample_max_weight)
         parts = wg.wallet_score(eps, now_ms=now_ms, equity=0.0, long=None)
         async with store.session() as conn:
             await conn.execute(

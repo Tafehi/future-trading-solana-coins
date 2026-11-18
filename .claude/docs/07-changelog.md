@@ -204,3 +204,27 @@ repo became `future-trading-kucoins` (Hyperliquid -> KuCoin); this one is `futur
   New box, empty database, fresh $10,000 paper account (BUG B-25).
 - **Next:** D-28, the new wallet finding (Hyperliquid holders -> hidden bot wallets -> copy them). Not built yet.
 
+
+
+## 2026-11-18 — /health watched two loops that no longer exist (DEBUG D-11)
+
+- The rebuilt box showed the container "unhealthy". `/health` still listed `poll` and `discovery` (Hyperliquid loops,
+  gone since the split), so it was always 503. Now it lists exactly the loops `main.py` runs; `app/tests/test_health.py`
+  (3 tests, 2 red on the old code) compares it with `main.py` itself; 1 mutant.
+
+## 2026-11-18 — More wallets pass: every owner's past from Jupiter's trade API (D-29)
+
+- **Why (user):** "deactivate these two [59 owners whose past was read; graded needs 15+ trades and 14+ days] ... find
+  a solution to pass more wallets". The box had 394 owners but only 59 read (the 20,000 Chainstack calls ran out at
+  10:20 UTC, ~340 calls an owner) and 6 GOLD/SILVER.
+- **Found and checked (2026-11-18):** Jupiter's own trade API (the official CLI's `jup perps history --address`):
+  one free call returns up to 1,000 trades with realized PnL and fees, years deep, no 429 at 10 calls/s. 20 of 20
+  real closes matched the chain decoder to the cent; it showed the decoder missed liquidation fees (DEBUG D-12).
+- **What:** `data/jupiter_api.py` (paging, page-border dedupe, trades -> lifetimes); `jobs/jupiter_history.py` reads
+  the API first for EVERY recorded owner (80 a minute), the chain only as fallback (the only Chainstack spend);
+  grading: 8 episodes and 1 day (was 15 and 14) with a stronger proof below 15 (needed PF x sqrt(15/n), no-loss = PF
+  n, weight <= 3); re-grade at least every 24 h; migration 3 re-reads the 59 chain-read owners once.
+- **Measured on 317 live owners:** GOLD+SILVER 5 (old) -> 26 (API for all, 15 episodes) -> 30 (new rules).
+- Tests: `test_jupiter_api.py` (16, real anonymised API answer `fixtures/jupiter_api_trades.json`),
+  `test_more_wallets_pass.py` (18); 24 mutants. Open: B-26 (the API is not in the docs).
+

@@ -10,10 +10,16 @@ prefilter, trade stream, 90-day fills, `live_check`) stayed in `future-trading-k
 
 - Recorded from the change feed: every open and close >= $1,000; a close becomes an episode valued at the KuCoin MARK
   of the same coin at that moment (BUG B-7).
-- **History from the chain (item 1):** owners with >= $10k open, biggest first, get their last 90 days read from their
-  Position accounts' transactions; the close events carry the real PnL and fees. Those episodes replace the feed's
-  estimates and count as history, so the owner is graded at once. Capped at `JUPITER_HISTORY_CALLS_PER_DAY` (B-15).
-- Graded once the history (recorded or read from the chain) covers 14 days and holds 15 closed episodes. No public account value, so drawdown = largest fall
+- **History for every owner (item 1; since 2026-11-18 from Jupiter's trade API, D-29):** every recorded owner, biggest
+  first, 80 a minute, gets its last 90 days read from `perps-api.jup.ag/v2/trades` (one free call per 1,000 trades;
+  exact PnL and every fee, open and liquidation fees included). Those episodes replace the feed's estimates (and an
+  older chain read) and count as history, so the owner is graded at once. Only when the API fails is the chain read
+  (close events in the Position accounts' transactions), capped at `JUPITER_HISTORY_CALLS_PER_DAY` (B-15).
+- Graded once the history covers 1 day and holds **8** closed episodes (was 14 days and 15, D-29). Below 15 episodes
+  the proof must be stronger: the needed PF is multiplied by sqrt(15 / episodes) (8: GOLD 2.46, SILVER 1.92; 10: 2.20,
+  1.71; 12: 2.01, 1.57), a record with no loss counts PF = its episode count (not the 99 cap), and the copy weight is
+  capped at 3. Re-graded after every new close and at least every 24 h. Measured on 317 live owners (2026-11-18):
+  5 GOLD/SILVER under the old rules with the old history, 26 with history for all, 30 with the 8-episode rule. No public account value, so drawdown = largest fall
   of cumulative episode PnL / the owner's largest position. GOLD = PF >= 1.8, DD <= 35%, total > 0, no single episode
   above `MAX_BIGGEST_WIN_SHARE`, not a scalper. SILVER (PF >= 1.4, DD <= 50%) copied at weight 3 at most (item 5).
   Grade score and copy weight use the shared rules in `core/wallet_grader.py`. Best 20 tracked, re-graded and re-picked every

@@ -101,6 +101,37 @@ mut app/record/episodes_export.py '            await meta.put(conn, KEY, max(int
 mut app/notifications/messages.py 'if not opened and not closed and not always:' 'if not opened and not closed:' 'reports_when_always'
 mut app/notifications/digest.py 'always=settings.digest_always and newest' 'always=settings.digest_always' 'gap_sends_one'
 mut app/config.py '        if 1440 % self.digest_minutes:' '        if False:' 'divide_a_day'
+# 2026-11-18 (D-29): more wallets pass. Every owner's past from Jupiter's trade API; a stronger proof below 15 trades.
+JA=app/data/jupiter_api.py
+mut $JA 'if size <= max(FLAT_USD, FLAT_SHARE * peak) or' 'if size < max(FLAT_USD, FLAT_SHARE * peak) or' 'flat_at_exactly'
+mut $JA ' or t.get("orderType") == "Liquidation":' ':' 'liquidation_closes_whatever'
+mut $JA '                if when >= since:' '                if when > since:' 'window_starts_at_exactly'
+mut $JA 'if t.get("owner") == owner and coin_of(t) in COINS' 'if coin_of(t) in COINS' 'other_owners'
+mut $JA '                if key not in seen:' '                if True:' 'border_repeats'
+mut $JA 'if len(rows) < PAGE or page * PAGE + len(rows) >= count:' 'if len(rows) < PAGE:' 'exactly_one_full_page'
+mut $JA '        return History(trades, False)' '        return History(trades, True)' 'marked_cut'
+mut $JA 'entry = entry_value / added if added else px' 'entry = px' 'open_add_partial'
+mut $JA '                fees += fee
+                entry_value += sz * px' '                entry_value += sz * px' 'open_add_partial or real_owner_lifetimes'
+mut app/data/jupiter_events.py '        fee += f["liquidation_fee_usd"]' '        pass' 'liquidation_fee_is_counted'
+JU=app/jobs/jupiter.py
+mut $JU 'if st.trades >= full or st.trades <= 0:' 'if st.trades > full or st.trades <= 0:' 'no_loss_yet'
+mut $JU '        pf = float(st.trades)' '        pass' 'no_loss_yet or lucky_short_streak'
+mut $JU '    return pf, math.sqrt(full / st.trades)' '    return pf, 1.0' 'below_15 or scaled_threshold'
+mut $JU 'settings.gold_min_profit_factor * scale, settings.silver_min_profit_factor * scale' 'settings.gold_min_profit_factor, settings.silver_min_profit_factor' 'scaled_threshold'
+mut $JU '        if st.trades < settings.jupiter_full_proof_episodes:  # a short record' '        if st.trades <= settings.jupiter_full_proof_episodes:  # a short record' 'short_record_copies_small'
+mut $JU 'OR graded_at < ?)' 'OR graded_at <= ?)' 'redone_after_exactly'
+mut app/config.py 'if self.jupiter_min_episodes > self.jupiter_full_proof_episodes:' 'if self.jupiter_min_episodes >= self.jupiter_full_proof_episodes:' 'above_full_proof_refuses'
+mut app/config.py 'default=1_000.0, ge=0.0, alias="JUPITER_HISTORY_MIN_SIZE_USD"' 'default=10_000.0, ge=0.0, alias="JUPITER_HISTORY_MIN_SIZE_USD"' 'every_recorded_owner_is_queued'
+mut app/config.py 'jupiter_min_episodes: int = Field(default=8,' 'jupiter_min_episodes: int = Field(default=15,' 'minimum_episodes_at_exactly_eight'
+JH=app/jobs/jupiter_history.py
+mut $JH 'if api is not None and settings.jupiter_history_source == "api":' 'if False:' 'replaces_feed_and_chain'
+mut $JH 'replaced = ("feed", "api", "chain") if origin' 'replaced = ("feed",) if origin' 'replaces_feed_and_chain'
+mut $JH 'history_from = since if hist.complete else max(since, oldest)' 'history_from = max(since, oldest)' 'replaces_feed_and_chain'
+mut $JH 'next_owners(settings.jupiter_history_owners_per_pass)' 'next_owners(20)' 'owners_per_pass'
+mut app/db/migrations.py 'UPDATE jup_owners SET backfilled_at = NULL WHERE backfilled_at IS NOT NULL;' '' 'migration_3'
+# 2026-11-18: /health watches exactly the loops main.py runs (DEBUG D-11)
+mut app/api/health.py '"jupiter": 300, "jhistory": 600}' '"jupiter": 300, "jhistory": 600, "poll": 300}' 'exactly_the_loops or every_loop_beat'
 # 2026-11-17: the Chainstack key in SOLANA_RPC_URL is masked in logs
 mut app/utils/logging.py '(re.compile(r"(\.chainstack\.com/)[A-Za-z0-9_-]+"), r"\1***"),' '' 'chainstack_key'
 

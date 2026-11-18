@@ -17,8 +17,10 @@ from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Loop name -> seconds without a beat before /health fails.
-LIMITS_S = {"poll": 300, "events": 120, "risk": 120, "cold": 600, "discovery": 1800}
+# Loop name -> seconds without a beat before /health fails. MUST name exactly the loops `main.py` runs (reconcile is
+# live only). Until 2026-11-18 this still listed `poll` and `discovery`, the Hyperliquid loops that left in the split
+# (D-19): they never beat, so /health was always 503 and Docker showed the container "unhealthy" (DEBUG D-11).
+LIMITS_S = {"events": 120, "risk": 120, "cold": 600, "jupiter": 300, "jhistory": 600}
 
 
 async def snapshot(now: float | None = None, limits: dict[str, int] | None = None) -> tuple[int, dict[str, Any]]:

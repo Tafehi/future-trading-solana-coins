@@ -1,7 +1,8 @@
 """The wallet pool at a glance: `python -m app.tools.wallets_report [--db PATH]`. Read-only.
 
 Per source and tier: graded, tracked, watched (the only source is Jupiter since the split, D-19). The shadow-copy
-record of the tracked and best watched wallets. How many Jupiter owners have chain history, and today's Jupiter
+record of the tracked and best watched wallets. How many Jupiter owners have their past read (Jupiter's trade API, or
+the chain as the fallback, D-29), and today's Jupiter
 history RPC calls against the budget.
 """
 
@@ -51,8 +52,8 @@ async def run(db: str | None) -> None:
         print(f"  {role:7} {m['source']:11} {m['tier']:6} w{m['copy_weight'] or 0:<2} {m['address'][:12]}…  {rec}")
     n_own, n_back = (owners["n"], owners["b"] or 0) if owners else (0, 0)
     calls = await jupiter_history.calls_today(now=now)
-    print(f"Jupiter: {n_own} owners recorded, {n_back} with chain history; "
-          f"history calls today {calls} / {settings.jupiter_history_calls_per_day}")  # fmt: skip
+    print(f"Jupiter: {n_own} owners recorded, {n_back} with their past read ({settings.jupiter_history_source}); "
+          f"chain fallback calls today {calls} / {settings.jupiter_history_calls_per_day}")  # fmt: skip
 
 
 def main() -> None:

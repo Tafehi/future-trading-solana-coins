@@ -5,8 +5,9 @@ Jupiter's program emits Anchor events by a self-CPI: an inner instruction of the
 Checked against mainnet 2026-11-13 (DEBUG D-5): a closing transaction (`InstantDecreasePosition2`) carries
 `InstantDecreasePositionEvent`; decoded with the IDL field order it gives the right owner, position key, prices and a
 PnL that matches the price move to the cent (fixture `jupiter_close_tx.json`). The event held ONE byte more than the IDL
-lists, so trailing bytes are allowed. `DecreasePositionEvent` (keeper path) and `LiquidateFullPositionEvent` are decoded
-from the same IDL; the first live run must confirm them (BUG B-14).
+lists, so trailing bytes are allowed. `DecreasePositionEvent` (keeper path) and `LiquidateFullPositionEvent` were
+confirmed on 2026-11-18 against Jupiter's trade API for 20 real closes of one owner (pnl, size, price to the cent; the
+liquidation fee was missing and is now added, DEBUG D-12; fixture `jupiter_api_trades.json`).
 
 USD and prices have 6 decimals. `position_size_usd` is the size AFTER the event: 0 = the position is fully closed.
 """
@@ -131,15 +132,20 @@ def decode_event(data: bytes, *, signature: str = "", block_time: int = 0) -> Cl
     if coin is None or side is None:
         return None
     sign = 1.0 if f["has_profit"] else -1.0
+    fee = f["fee_usd"]
     if name == LIQUIDATION:  # the event has no delta: the whole position (its size field) is gone
         size_after, delta = 0.0, f["position_size_usd"]
+        # `fee_usd` holds the base + borrow + price-impact fees only; the liquidation fee is a separate field. Checked
+        # 2026-11-18 against Jupiter's trade API on 4 real liquidations: fee_usd + liquidation_fee_usd = the API's fee
+        # to the cent; without it a liquidated wallet looked up to $108 a trade better than it was (DEBUG D-12).
+        fee += f["liquidation_fee_usd"]
     else:
         size_after, delta = f["position_size_usd"] / USD_DECIMALS, f.get("size_usd_delta")
     return CloseEvent(
         name=name, signature=signature, block_time=block_time, position_key=str(f["position_key"]),
         owner=str(f["owner"]), coin=coin, side=side, size_after_usd=size_after,
         size_delta_usd=(delta / USD_DECIMALS) if delta is not None else size_after,
-        pnl_usd=sign * f["pnl_delta"] / USD_DECIMALS, fee_usd=f["fee_usd"] / USD_DECIMALS,
+        pnl_usd=sign * f["pnl_delta"] / USD_DECIMALS, fee_usd=fee / USD_DECIMALS,
         price=f["price"] / USD_DECIMALS, position_open_time=int(f["position_open_time"]),
         position_price=f["position_price"] / USD_DECIMALS,
     )  # fmt: skip

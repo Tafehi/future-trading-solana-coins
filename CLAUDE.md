@@ -33,8 +33,9 @@ follows the money behind a wallet. Split on 2026-11-14 from `future-trading-coin
 - **Secret `solana-future-bot`** (still in AWS): the bot's keys, and the tracer's Telegram token + Solana URL (D-27).
   **Live is blocked** (B-3): the KuCoin key is the KuCoin bot's. `MODE=live` refuses to boot until
   `KUCOIN_KEY_DEDICATED=true`.
-- **Wallet pool (today):** Jupiter GOLD + SILVER (weight <= 3), chain history (20k calls/day, B-15), shadow copies
-  decide the order. `wallets_report` shows it.
+- **Wallet pool (D-29, 2026-11-18):** every recorded owner's past from Jupiter's free trade API (chain = fallback,
+  20k Chainstack calls/day); graded from 8 episodes (stronger proof below 15, weight <= 3), re-graded daily; GOLD +
+  SILVER (weight <= 3), shadow copies decide the order. Measured: 5 -> 30 passing of 317 live owners.
 - **Telegram:** the bot reports every 45 min, ALWAYS (`[PAPER] Jupiter-KuCoin`); the tracer sends one summary per run.
 - **Tracer:** `python -m app.tools.wallet_trace <addr> --chain hl|sol`; reads its secret with the user's AWS login.
 - Checks: `./precommit.sh` prints its own counts (tests, mutants); that output is the source of truth, not this file.

@@ -38,8 +38,11 @@ SILVER_MAX_WEIGHT = 3          # item 5: at most 17% of a full trade
 MAX_TRACKED_SILVER = 10
 SHADOW_ENABLED = true          # item 4: rank wallets by our own shadow copies
 SHADOW_MIN_TRADES = 5
-JUPITER_HISTORY_ENABLED = true # item 1: Jupiter history from the chain (graded on day one)
-JUPITER_HISTORY_CALLS_PER_DAY = 20000  # Chainstack calls a day for item 1 (plan shared with Pump-fun-S1/S3)
+JUPITER_HISTORY_ENABLED = true # item 1: every owner's past is read, so it is graded on day one
+JUPITER_HISTORY_SOURCE = "api" # 2026-11-18 (D-29): Jupiter's free trade API first; the chain only when it fails
+JUPITER_HISTORY_CALLS_PER_DAY = 20000  # Chainstack calls a day, now for the chain FALLBACK only
+JUPITER_MIN_EPISODES = 8       # D-29: was 15; below JUPITER_FULL_PROOF_EPISODES the needed PF grows (jobs/jupiter.proof)
+JUPITER_MIN_RECORD_DAYS = 1.0  # D-29: was 14; the API gives every owner 90 days of record on its first read
 
 # ── Telegram ─────────────────────────────────────────────────────────────────────────────────────
 BOT_NAME = "Jupiter-KuCoin"    # both bots post to one chat (split 2026-11-14): "[PAPER] Jupiter-KuCoin"

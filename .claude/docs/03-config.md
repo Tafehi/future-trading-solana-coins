@@ -46,3 +46,21 @@ only when the file changed.
 - `DIGEST_MINUTES = 45`, `DIGEST_ALWAYS = true` (user, 2026-11-16): a Telegram report every 45 min even without a
   trade (open positions + account); `false` = only windows with a trade. The minutes must divide 1440.
 - `DB_PATH` default is `data/solana-future-coin.db`.
+
+## Settings added on 2026-11-18 (D-29: more wallets pass)
+
+| Setting | Default | What |
+|---|---|---|
+| `JUPITER_HISTORY_SOURCE` | `api` | `api` = an owner's past from Jupiter's free trade API (the chain read only when it fails); `chain` = Chainstack only, as before |
+| `JUPITER_API_RPS` | 2 | pace of the trade API (it answered 10/s without a 429 on 2026-11-18) |
+| `JUPITER_HISTORY_OWNERS_PER_PASS` | 80 | owners read per minute (the jhistory loop) |
+| `JUPITER_HISTORY_MIN_SIZE_USD` | 1,000 | was 10,000: every recorded owner gets its past read |
+| `JUPITER_MIN_EPISODES` | 8 | was 15 |
+| `JUPITER_MIN_RECORD_DAYS` | 1 | was 14: the API gives every owner 90 days of record on its first read |
+| `JUPITER_FULL_PROOF_EPISODES` | 15 | below this the needed PF grows as sqrt(15 / episodes), and a record with no loss counts PF = its episode count |
+| `JUPITER_SMALL_SAMPLE_MAX_WEIGHT` | 3 | copy weight cap for a record below `JUPITER_FULL_PROOF_EPISODES` |
+| `JUPITER_REGRADE_HOURS` | 24 | a grade is redone at least this often, so a slow wallet does not drop out after 72 h |
+
+`JUPITER_HISTORY_CALLS_PER_DAY` (20,000) still caps Chainstack calls, now for the chain fallback only. Boot refuses
+`JUPITER_MIN_EPISODES > JUPITER_FULL_PROOF_EPISODES` and an unknown `JUPITER_HISTORY_SOURCE`.
+

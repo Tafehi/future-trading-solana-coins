@@ -27,6 +27,7 @@ from app.api import health
 from app.config import settings
 from app.data import jupiter_perps as jp
 from app.data.http import DataError
+from app.data.jupiter_api import JupiterApi
 from app.data.kucoin import KucoinFutures
 from app.data.kucoin_private import AuthError, KucoinPrivate
 from app.data.market import JUPITER_COINS, MarketCache
@@ -82,6 +83,7 @@ class Bot:
         self.notifier = TelegramNotifier()
         self.recorder = Recorder()
         self.solana = SolanaRpc()
+        self.jup_api = JupiterApi(rps=settings.jupiter_api_rps)  # owners' past from Jupiter's trade API (D-29)
         self.private: KucoinPrivate | None = KucoinPrivate() if settings.is_live else None
         self.executor: Executor = KucoinExecutor(self.private) if self.private else PaperExecutor(self.kf)
         self.copier = Copier(self.kf, self.market, self.executor)
@@ -178,7 +180,7 @@ class Bot:
     async def jhistory_pass(self) -> None:
         if not (settings.jupiter_enabled and settings.jupiter_history_enabled and self.solana.enabled):
             return
-        await jupiter_history.step(self.solana, deadline=time.time() + 50)
+        await jupiter_history.step(self.solana, deadline=time.time() + 50, api=self.jup_api)
 
     async def cold_pass(self) -> None:
         now = time.time()
@@ -269,7 +271,7 @@ class Bot:
         await self.close()
 
     async def close(self) -> None:
-        for c in (self.kf, self.solana, self.notifier):
+        for c in (self.kf, self.solana, self.jup_api, self.notifier):
             await c.close()
         if self.private is not None:
             await self.private.close()

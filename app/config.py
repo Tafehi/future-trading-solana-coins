@@ -164,20 +164,32 @@ class Settings(BaseSettings):
     jupiter_poll_seconds: float = Field(default=60.0, ge=15.0, alias="JUPITER_POLL_SECONDS")
     # Positions smaller than this are ignored (dust, tests, probes).
     jupiter_min_size_usd: float = Field(default=1_000.0, ge=0.0, alias="JUPITER_MIN_SIZE_USD")
-    # A Jupiter wallet is graded only after this much recording and this many closed episodes (no history API).
-    jupiter_min_record_days: float = Field(default=14.0, ge=1.0, alias="JUPITER_MIN_RECORD_DAYS")
-    jupiter_min_episodes: int = Field(default=15, ge=1, alias="JUPITER_MIN_EPISODES")
+    # A Jupiter wallet is graded only after this much record and this many closed episodes. Since 2026-11-18 (D-29)
+    # every owner's record comes from Jupiter's trade API (90 days on its first read), so the day count rarely waits;
+    # was 14 days and 15 episodes. Below JUPITER_FULL_PROOF_EPISODES the needed PF grows (jobs/jupiter.proof).
+    jupiter_min_record_days: float = Field(default=1.0, ge=1.0, alias="JUPITER_MIN_RECORD_DAYS")
+    jupiter_min_episodes: int = Field(default=8, ge=1, alias="JUPITER_MIN_EPISODES")
+    jupiter_full_proof_episodes: int = Field(default=15, ge=1, alias="JUPITER_FULL_PROOF_EPISODES")
+    jupiter_small_sample_max_weight: int = Field(default=3, ge=1, le=10, alias="JUPITER_SMALL_SAMPLE_MAX_WEIGHT")
+    # Re-grade at least this often, so a slow wallet's grade never expires (TRACK_MAX_GRADE_AGE_HOURS) unseen.
+    jupiter_regrade_hours: float = Field(default=24.0, gt=0.0, alias="JUPITER_REGRADE_HOURS")
     jupiter_max_tracked: int = Field(default=20, ge=0, alias="JUPITER_MAX_TRACKED")
     # Jupiter history from the chain (user, 2026-11-13, item 1): each candidate owner's closes over the last
     # JUPITER_HISTORY_DAYS are read from its Position accounts' transactions (the close event carries the real PnL
     # and fees, checked against mainnet 2026-11-13), so it can be graded on day one instead of after 14 days of
     # recording. Uses Chainstack calls shared with Pump-fun-S1/S3: hard daily cap below.
     jupiter_history_enabled: bool = Field(default=True, alias="JUPITER_HISTORY_ENABLED")
+    # Where an owner's past comes from (D-29): "api" = Jupiter's public trade API (data/jupiter_api.py, one call per
+    # 1,000 trades, free; the chain read is the fallback when it fails), "chain" = Chainstack only (as before).
+    jupiter_history_source: str = Field(default="api", alias="JUPITER_HISTORY_SOURCE")
+    jupiter_api_rps: float = Field(default=2.0, gt=0.0, le=10.0, alias="JUPITER_API_RPS")
+    jupiter_history_owners_per_pass: int = Field(default=80, ge=1, alias="JUPITER_HISTORY_OWNERS_PER_PASS")
     jupiter_history_days: float = Field(default=90.0, ge=1.0, alias="JUPITER_HISTORY_DAYS")
     jupiter_history_calls_per_day: int = Field(default=20_000, ge=0, alias="JUPITER_HISTORY_CALLS_PER_DAY")
     jupiter_history_rps: float = Field(default=2.0, gt=0.0, le=20.0, alias="JUPITER_HISTORY_RPS")
-    # Owners holding at least this much open (USD) are backfilled first, biggest first.
-    jupiter_history_min_size_usd: float = Field(default=10_000.0, ge=0.0, alias="JUPITER_HISTORY_MIN_SIZE_USD")
+    # Owners holding at least this much open (USD) get their past read, biggest first. 1,000 = every recorded owner
+    # (the feed's own minimum); was 10,000 while every read cost ~340 Chainstack calls (D-29).
+    jupiter_history_min_size_usd: float = Field(default=1_000.0, ge=0.0, alias="JUPITER_HISTORY_MIN_SIZE_USD")
     # Newest transactions per Position account; a very busy owner is graded on its most recent part.
     jupiter_history_max_tx_per_position: int = Field(default=300, ge=10, alias="JUPITER_HISTORY_MAX_TX_PER_POSITION")
 
@@ -302,6 +314,10 @@ class Settings(BaseSettings):
             raise ValueError("GOLD_MAX_DRAWDOWN is looser than SILVER_MAX_DRAWDOWN")
         if self.gold_min_trades < self.silver_min_trades:
             raise ValueError("GOLD_MIN_TRADES is below SILVER_MIN_TRADES")
+        if self.jupiter_min_episodes > self.jupiter_full_proof_episodes:
+            raise ValueError("JUPITER_MIN_EPISODES is above JUPITER_FULL_PROOF_EPISODES")
+        if self.jupiter_history_source not in ("api", "chain"):
+            raise ValueError(f"JUPITER_HISTORY_SOURCE must be 'api' or 'chain'; got {self.jupiter_history_source!r}")
         return self
 
     @model_validator(mode="after")

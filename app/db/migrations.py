@@ -250,7 +250,15 @@ ALTER TABLE jup_episodes ADD COLUMN position_key TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS jup_episodes_chain ON jup_episodes (position_key, opened_at) WHERE origin = 'chain';
 """
 
-MIGRATIONS: list[str] = [_V1, _V2]
+# 2026-11-18 (D-29): an owner's past from Jupiter's trade API (origin 'api'). The owners already read from the chain
+# are read once more: the chain decoder missed liquidation fees (DEBUG D-12) and every open fee, so their episodes were
+# optimistic; the API read replaces them.
+_V3 = """
+CREATE UNIQUE INDEX IF NOT EXISTS jup_episodes_api ON jup_episodes (position_key, opened_at) WHERE origin = 'api';
+UPDATE jup_owners SET backfilled_at = NULL WHERE backfilled_at IS NOT NULL;
+"""
+
+MIGRATIONS: list[str] = [_V1, _V2, _V3]
 SCHEMA_VERSION = len(MIGRATIONS)
 
 
