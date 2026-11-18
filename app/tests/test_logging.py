@@ -16,6 +16,10 @@ def test_redact_hides_the_chainstack_key_in_the_rpc_url() -> None:
 
 
 def test_redact_hides_the_other_url_secrets() -> None:
+    assert redact("https://api.telegram.org/bot123:PLACEHOLDER/sendMessage") == (
+        "https://api.telegram.org/bot***/sendMessage"
+    )
+    assert redact("https://hc-ping.com/PLACEHOLDER-UUID") == "https://hc-ping.com/***"
     assert redact("https://x.io/?api-key=PLACEHOLDER&a=1") == "https://x.io/?api-key=***&a=1"
 
 

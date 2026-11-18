@@ -214,7 +214,7 @@ def test_report_files_and_contents(audit_tmp: Path) -> None:
         report.write(REPO / "not-audit", res, [], chain="hl", args="t", calls=0, cache_hits=0)
 
 
-# --- read-only: the copy-trading bot was removed (2026-11-17, D-26); the repo must stay a research tool ------------
+# --- isolation: the bot and the tracer live side by side (PLAN §3; bot restored 2026-11-18) ------------------------
 def test_the_tool_imports_with_no_settings_or_secrets() -> None:
     """The tracer runs on a laptop with no env: no bot settings, no secret, no database."""
     code = "import app.tools.wallet_trace.__main__, app.tools.wallet_trace.sol_source; print('ok')"
@@ -224,14 +224,30 @@ def test_the_tool_imports_with_no_settings_or_secrets() -> None:
     assert out.stdout.strip() == "ok"
 
 
-def test_no_trading_or_bot_code_comes_back() -> None:
-    """Nothing places an order or talks to an exchange's private API; the old bot's packages stay gone. Telegram and
-    AWS Secrets Manager are allowed since D-27 (user, 2026-11-17), but only in their own modules, and AWS only reads."""
-    gone = ["app/main.py", "app/config.py", "app/trading", "app/jobs", "app/core", "app/notifications", "app/record",
-            "app/db", "app/api", "infra", ".github/workflows/deploy.yml"]  # fmt: skip
-    assert [g for g in gone if (REPO / g).exists()] == []
-    words = ("kucoin", "place_order", "/api/v1/orders", '"exchange"', "sign_transaction", "private_key")
-    src = [p for p in (REPO / "app").rglob("*.py") if "tests" not in p.parts]
+def test_the_bot_does_not_import_the_tracer() -> None:
+    """Until the user decides how the tracer feeds wallet selection (PLAN phase 6), the bot's loops and its Chainstack
+    budget cannot be touched by the tracer: importing the bot loads no tracer module."""
+    code = "import sys, app.main; print(any(m.startswith('app.tools.wallet_trace') for m in sys.modules))"
+    env = {"SETTINGS_FILE": "unset", "MODE": "paper", "PATH": "/usr/bin:/bin"}
+    argv = [sys.executable, "-c", code]
+    out = subprocess.run(argv, cwd=REPO, env=env, capture_output=True, text=True, timeout=60)  # noqa: S603
+    assert out.returncode == 0, out.stderr[-500:]
+    assert out.stdout.strip() == "False"
+
+
+def test_no_bot_module_names_the_tracer() -> None:
+    bot = ["app/main.py", "app/jobs", "app/trading", "app/core", "app/data", "app/notifications", "app/record",
+           "app/db", "app/api"]  # fmt: skip
+    hits = [str(p.relative_to(REPO)) for d in bot
+            for p in ([REPO / d] if d.endswith(".py") else (REPO / d).rglob("*.py"))
+            if "wallet_trace" in p.read_text()]  # fmt: skip
+    assert hits == []
+
+
+def test_the_tracer_only_reads() -> None:
+    """The tracer never trades; AWS is used only to READ its secret (D-27)."""
+    src = list((REPO / "app/tools/wallet_trace").rglob("*.py"))
+    words = ("place_order", "/api/v1/orders", "sign_transaction", "private_key", "kucoin_private", "executor")
     hits = [f"{p.relative_to(REPO)}: {w}" for p in src for w in words if w in p.read_text().lower()]
     assert hits == []
     aws = sorted(str(p.relative_to(REPO)) for p in src if "boto3" in p.read_text())

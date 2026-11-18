@@ -41,3 +41,9 @@ L-1 to L-10 come from the copy-trading bot (removed 2026-11-17, D-26); they stay
 - **L-12 — "Strip the URL" must be tested with the URL inside the error text.** `split(':')[-1]` looked safe on an
   "HTTP 429" message and leaked the key on a connection error (DEBUG D-10). Keep the type of the failure, never its
   text.
+- **L-13 — When an answer does not pick an option, ask again before anything destructive.** On 2026-11-17 the user
+  asked to remove "all codes related to the old bot"; asked how much to remove, they answered "i can run tf destroy
+  ... if needed", which picked none of the options. The removal went ahead on the widest reading, and the user ran
+  the destroy. They had meant the old wallet-selection method. The bot was restored the next day, but the box's
+  database and backups were gone for good. A deletion that is hard to undo needs an answer that names it.
+

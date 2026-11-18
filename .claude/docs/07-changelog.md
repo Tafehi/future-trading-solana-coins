@@ -190,3 +190,17 @@ repo became `future-trading-kucoins` (Hyperliquid -> KuCoin); this one is `futur
   read-only guard now allows boto3 only in `secrets.py` and only `get_secret_value`. 9 new mutants, all killed.
 - BUG B-18 closed (the secret stays on purpose). New: B-23 (first real secret read is the user's), B-24 (Chainstack pace).
 
+## 2026-11-18 — Bot restored with the tracer kept (D-26 reversed, D-28)
+
+- **Why (user):** "i have asked you to keep the setup and change the way that the bot finds the wallets". The
+  2026-11-17 removal misread the request (LESSON L-13).
+- **Restored from `7437aec`:** all bot code and tests, `infra/`, the workflows, host scripts, docs 02/03/04/06/08,
+  the bot's requirements. **Kept:** the tracer, its Telegram + Secrets Manager (D-27), DEBUG D-8..D-10, and the
+  `SolanaRpc` URL-leak fix (D-10) plus `maxSupportedTransactionVersion: 1` for the bot's history reader too.
+- `boto3` moved to `requirements-dev.txt` (laptop tracer only), so the bot image is unchanged.
+- Guards: the bot does not import the tracer (subprocess test) and no bot module names it; the tracer only reads.
+  `scripts/checks.py` = the bot-era checks + `case-addresses`; `scripts/mutants.sh` = 108 mutants (bot + tracer).
+- **Deploy:** merged to main and pushed (user: "Rebuild on push"): CI rebuilds the destroyed box, bucket and ECR repo.
+  New box, empty database, fresh $10,000 paper account (BUG B-25).
+- **Next:** D-28, the new wallet finding (Hyperliquid holders -> hidden bot wallets -> copy them). Not built yet.
+

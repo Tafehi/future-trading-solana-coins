@@ -4,8 +4,8 @@ Back to the index: [CLAUDE.md](../../CLAUDE.md). The brief is [PLAN.md](../../PL
 
 A **read-only research tool for the laptop**: for any wallet it says what kind of wallet it is, where its money came from
 and went (N steps), which wallets have the same owner, and whether it trades futures, spot or both. Hyperliquid and
-Solana. Since 2026-11-17 it is the whole repo: the copy-trading bot was removed (D-26), and
-`test_no_trading_or_bot_code_comes_back` keeps it read-only. Each run sends a short summary to Telegram; the token
+Solana. It lives next to the copy-trading bot (restored 2026-11-18, D-28); the bot never imports it
+(`test_the_bot_does_not_import_the_tracer`) and the tracer only reads (`test_the_tracer_only_reads`). Each run sends a short summary to Telegram; the token
 and the Chainstack Solana URL come from AWS Secrets Manager (D-27, section below).
 
 ## Run it
@@ -87,7 +87,7 @@ and the Chainstack Solana URL come from AWS Secrets Manager (D-27, section below
 - `test_wallet_trace_golden.py`: PLAN §2.2 from `fixtures/wallet_trace_hl_case.json` (16 case wallets, anonymised).
 - `test_wallet_trace_rules.py`: every rule AT its boundary value.
 - `test_wallet_trace_tool.py`: paging, cache (a re-run costs 0 calls), budget, 429 wait, walk, report, CLI guard,
-  the tool imports with no env, no trading code comes back.
+  the tool imports with no env, the bot does not import it, the tracer only reads.
 - `test_wallet_trace_sol.py`: a live Jupiter Perps trader is `PERP TRADER`, a live pump.fun trader gets a verdict with
   reasons (`fixtures/wallet_trace_sol_case.json`), swap and transfer decoding, the funder, the URL never in an error.
 - Fixtures are built by `scripts/make_trace_fixtures.py` from the case cache in `audit/` (run by hand; deterministic).
@@ -98,5 +98,5 @@ and the Chainstack Solana URL come from AWS Secrets Manager (D-27, section below
 ## Not in v1 (said in every report)
 
 Arbitrum after a Hyperliquid `withdraw`, HyperEVM after a send to a system address, exchange hot wallets: the report
-prints the explorer link. Phase 6 (the tracer feeding a copy bot's wallet selection) is not built, and the copy bot is gone: the user
-decides, and it needs its own DECISIONS row.
+prints the explorer link. Phase 6 (the tracer feeding the bot's wallet selection) is the next step (D-28: Hyperliquid holders -> hidden bot
+wallets -> copy them). Not built yet.

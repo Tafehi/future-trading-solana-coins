@@ -48,7 +48,7 @@ def _clean(v: object) -> str:
 def fetch_secret(name: str, region: str, *, client: Any = None) -> dict[str, str]:
     """The secret's JSON as a dict. `client` is injectable (tests use a fake). Raises on any AWS error."""
     if client is None:
-        import boto3  # optional: only needed when the secret is actually read
+        import boto3  # laptop only (requirements-dev.txt), never in the bot image: imported when the secret is read
 
         client = boto3.client("secretsmanager", region_name=region)
     resp = client.get_secret_value(SecretId=name)

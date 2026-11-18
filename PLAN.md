@@ -7,8 +7,8 @@ Read it top to bottom before writing code.
 **Status 2026-11-17: phases 0-5 are built** (`app/tools/wallet_trace/`, D-25). What was built, how to run it and what
 real data changed: [.claude/docs/09-wallet-tracer.md](.claude/docs/09-wallet-tracer.md). Changes to this plan found
 while building are marked **(built: ...)** below. Phase 6 is open (the user decides).
-**2026-11-17 later:** the copy-trading bot was removed from this repo (D-26). Wherever this plan says "the bot" (its
-budgets, `main.py`, `jup_episodes`), that part is history; the tracer is now the whole repo.
+**2026-11-18:** the bot was removed on 2026-11-17 by mistake (D-26) and restored with the tracer kept (D-28).
+Phase 6 is now chosen by the user: follow Hyperliquid holders back to the hidden bot wallets and copy those.
 
 ## 1. Goal (why this exists)
 
