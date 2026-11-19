@@ -22,7 +22,8 @@
 #   futures/ (shared)      the listing, and the last DAYS days of solana-bot/{grades,positions,shadow}. Not
 #                          jupiter/positions: it is a snapshot every minute and large (the listing shows it)
 # Then, with no AWS call, using the repo's .venv: evidence_report (every table as CSV + summary.md by wallet, source,
-# reason, tier, day; the wallet pool; the shadow record), trade_log, golive_check, wallets_report. INDEX.md at the top
+# reason, tier, day; the wallet pool; the shadow record), trade_log, golive_check, wallets_report, and
+# criteria_backtest (analysis/criteria/criteria.md: which wallet rules pick the most wallets that stay good). INDEX.md at the top
 # lists what came, what failed, and the folder to hand to the assistant.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
@@ -122,6 +123,14 @@ if [ -s "$DB" ] && [ -x "$PY" ]; then
   # One file before D-30 (the pool and the shadow copies both in it), two after.
   run "$OUT/analysis/wallets_report.txt" "$PY" -m app.tools.wallets_report --scout-db "${SCOUT_DB:-$DB}" \
     --trader-db "$DB"
+  # Which wallet rules pick the most wallets that stay good (walk-forward, no look-ahead; the fuller file is used).
+  if [ -s "$SCOUT_DB" ]; then
+    run "$OUT/analysis/criteria_backtest.txt" "$PY" -m app.tools.criteria_backtest --db "$DB" --db "$SCOUT_DB" \
+      --out "$OUT/analysis/criteria"
+  else
+    run "$OUT/analysis/criteria_backtest.txt" "$PY" -m app.tools.criteria_backtest --db "$DB" \
+      --out "$OUT/analysis/criteria"
+  fi
 else
   echo "   skipped: no database downloaded, or no $PY (python3.12 -m venv .venv && .venv/bin/pip install -r app/requirements-dev.txt)"
   FAILED+=("analysis")

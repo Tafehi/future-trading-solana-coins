@@ -21,15 +21,34 @@ prefilter, trade stream, 90-day fills, `live_check`) stayed in `future-trading-k
   capped at 3. Re-graded after every new close and at least every 24 h. Measured on 317 live owners (2026-11-18):
   5 GOLD/SILVER under the old rules with the old history, 26 with history for all, 30 with the 8-episode rule. No public account value, so drawdown = largest fall
   of cumulative episode PnL / the owner's largest position. GOLD = PF >= 1.8, DD <= 35%, total > 0, no single episode
-  above `MAX_BIGGEST_WIN_SHARE`, not a scalper. SILVER (PF >= 1.4, DD <= 50%) copied at weight 3 at most (item 5).
+  above `MAX_BIGGEST_WIN_SHARE` (0.5 since D-31) of the profit, a win rate >= `JUPITER_MIN_WIN_RATE` (40%, D-31), not
+  a scalper. SILVER (PF >= 1.4, DD <= 50%) copied at weight 3 at most (item 5).
   Grade score and copy weight use the shared rules in `core/wallet_grader.py`. Best 20 tracked, re-graded and re-picked every
   `JUPITER_GRADE_MINUTES` (5 min since 2026-11-13, was hourly). Coins: SOL, ETH, BTC only.
+
+## Testing new wallet rules first (`tools/criteria_backtest.py`, user 2026-11-19)
+
+Goal (user): "find the best criteria that lead to selecting many best wallets as possible". Before a rule changes, the
+backtest grades every owner on what was known at a cutoff (episodes closed before it, with the bot's own math) and
+checks the trades it opened in the next 10 days (price move minus two taker fees). It runs every rule set in a grid
+(trades, PF with or without the small-sample proof, drawdown, scalpers, biggest-win share, win rate, days since the
+last trade, median size) over 3 folds, and ranks the ROBUST ones (pooled PF >= 1.3 and mean > 0 in every fold) by the
+good wallets in the worst fold. Today's rules (read from settings) are always in the report. It uses the owners' own
+exits, not ours, so the shadow copies stay the final check. `scripts/collect_evidence.sh` runs it:
+`analysis/criteria/criteria.md`.
+
+**Result and rules since 2026-11-19 (D-31):** the old pool (93 wallets) pooled PF 1.12 / 0.98 / 1.44 over the three
+windows. Three rules made it robust (PF 1.93 / 1.34 / 1.90, 46 wallets): the biggest single win at most 50% of the
+profit (`MAX_BIGGEST_WIN_SHARE` 0.5, else BRONZE), a win rate of at least 40% (`JUPITER_MIN_WIN_RATE`, else BRONZE),
+and a closed trade in the last 14 days (`JUPITER_MAX_IDLE_DAYS`, else not picked at all). Each boundary value passes.
+Watched until the shadow copies confirm it (BUG B-31).
 
 ## Selection: tracked vs watched (`core/selection.py`, items 4 and 5)
 
 1. Eligible: GOLD and SILVER. 2. A wallet with 5+ shadow copies in 14 days and a mean <= 0% is NOT tracked (copying
 it loses), only watched. 3. Order: proven wallets (5+ copies, mean > 0) by mean, then GOLD by grade score, then SILVER.
-4. Tracked = the first `JUPITER_MAX_TRACKED` (20), at most `MAX_TRACKED_SILVER` (10) SILVER. The rest are watched
+4. Tracked = the first `JUPITER_MAX_TRACKED` (20), at most `MAX_TRACKED_SILVER` (10) SILVER. An owner with no
+closed trade in `JUPITER_MAX_IDLE_DAYS` (14, D-31) is skipped before this: not tracked, not watched. The rest are watched
 (the trader's websocket follows them too, for fast shadow entries). Re-picked after each grading, every 5 min. The
 pick writes `jup:picked_at` with the flags; when the trader's shadow record cannot be read, the pick FAILS CLOSED (the
 old flags and time stay, retried in 60 s), so a broken read never re-tracks a wallet whose copies lose.

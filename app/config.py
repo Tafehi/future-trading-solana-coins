@@ -131,7 +131,9 @@ class Settings(BaseSettings):
     silver_min_profit_factor: float = Field(default=1.4, gt=0.0, alias="SILVER_MIN_PROFIT_FACTOR")
     silver_max_drawdown: float = Field(default=0.50, gt=0.0, le=1.0, alias="SILVER_MAX_DRAWDOWN")
     max_unrealized_loss_share: float = Field(default=0.05, gt=0.0, le=1.0, alias="MAX_UNREALIZED_LOSS_SHARE")
-    max_biggest_win_share: float = Field(default=1.0, gt=0.0, le=1.0, alias="MAX_BIGGEST_WIN_SHARE")
+    # D-31 (2026-11-19, the wallet-rule backtest): an owner whose biggest single win is more than half of its total
+    # profit is BRONZE (a lucky trade, not a method). Was 1.0 (off): half of the old pool depended on one trade.
+    max_biggest_win_share: float = Field(default=0.5, gt=0.0, le=1.0, alias="MAX_BIGGEST_WIN_SHARE")
     max_inactive_days: float = Field(default=5.0, gt=0.0, alias="MAX_INACTIVE_DAYS")
     max_wallet_leverage: float = Field(default=15.0, gt=0.0, alias="MAX_WALLET_LEVERAGE")
     scratch_loss_share: float = Field(default=0.005, ge=0.0, le=0.1, alias="SCRATCH_LOSS_SHARE")
@@ -176,6 +178,12 @@ class Settings(BaseSettings):
     jupiter_min_episodes: int = Field(default=8, ge=1, alias="JUPITER_MIN_EPISODES")
     jupiter_full_proof_episodes: int = Field(default=15, ge=1, alias="JUPITER_FULL_PROOF_EPISODES")
     jupiter_small_sample_max_weight: int = Field(default=3, ge=1, le=10, alias="JUPITER_SMALL_SAMPLE_MAX_WEIGHT")
+    # D-31 (2026-11-19, `tools/criteria_backtest.py`): at least this share of an owner's trades must win, or it is
+    # BRONZE (0 = off); and an owner whose last closed trade is older than JUPITER_MAX_IDLE_DAYS is not picked
+    # (neither tracked nor watched): it is not trading now. With MAX_BIGGEST_WIN_SHARE 0.5 these made the pooled
+    # profit factor of the picked wallets >= 1.3 in every backtest window (today's pool: 0.98 in one).
+    jupiter_min_win_rate: float = Field(default=0.4, ge=0.0, le=1.0, alias="JUPITER_MIN_WIN_RATE")
+    jupiter_max_idle_days: float = Field(default=14.0, gt=0.0, alias="JUPITER_MAX_IDLE_DAYS")
     # Re-grade at least this often, so a slow wallet's grade never expires (TRACK_MAX_GRADE_AGE_HOURS) unseen.
     jupiter_regrade_hours: float = Field(default=24.0, gt=0.0, alias="JUPITER_REGRADE_HOURS")
     jupiter_max_tracked: int = Field(default=20, ge=0, alias="JUPITER_MAX_TRACKED")

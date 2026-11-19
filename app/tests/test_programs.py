@@ -119,8 +119,9 @@ def test_the_websocket_url_is_derived_from_the_rpc_url(monkeypatch: pytest.Monke
 async def _graded(address: str, *, tier: str = wg.GOLD, at: float = NOW) -> None:
     async with store.session() as conn:
         await conn.execute(
-            "INSERT INTO wallets (address, source, tier, graded_at, count_score) VALUES (?, 'jupiter', ?, ?, 5)",
-            (address, tier, at),
+            "INSERT INTO wallets (address, source, tier, graded_at, count_score, last_fill_at) "
+            "VALUES (?, 'jupiter', ?, ?, 5, ?)",
+            (address, tier, at, at),  # traded at the grade: not idle (D-31)
         )
 
 

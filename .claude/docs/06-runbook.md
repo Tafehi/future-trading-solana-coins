@@ -35,7 +35,9 @@ copies, exits, Telegram). The systemd unit `solana-future-coin` starts and stops
 1. On the box: `sudo bash /opt/solana-future-coin/logs/scripts/statusCheck.sh --evidence` (logs -> `s3://<bucket>/diag/`).
 2. Here: `./scripts/collect_evidence.sh` (your AWS login; read-only). `LEGACY=1` = the old futcoins database with the
    Jupiter history from before the split; `DAYS=7` = a week of `solana-bot/` Parquet.
-3. Hand `audit/<date>/` to the assistant; start at `INDEX.md` and `analysis/summary.md`.
+3. Hand `audit/<date>/` to the assistant; start at `INDEX.md` and `analysis/summary.md`. The wallet-rule backtest
+   is in `analysis/criteria/criteria.md` (rerun alone: `.venv/bin/python -m app.tools.criteria_backtest --db
+   audit/<date>/bucket/solana-future-coin.db`).
 
 ## The first start after D-30 (or on a new box)
 

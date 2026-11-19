@@ -28,6 +28,10 @@ Back to the index: [CLAUDE.md](../../CLAUDE.md).
   SHADOW_ONLY, a dropped wallet's copy still exits), `test_health.py` (each program's loops = its limits). Copier
   tests use `helpers.TableCopyList` (reads the test database's `wallets` on every lookup). Accounts in websocket tests
   are a fixture account with rewritten fields (`helpers.position_account`), so no address is typed.
+- **The wallet-rule backtest** (`test_criteria_backtest.py`): no look-ahead tested AT the cutoff (closed at the
+  cutoff = not yet known; opened at it = a copy), the fee formula, pooled numbers by hand, the bit masks equal to the
+  plain rule check on 400 random rule sets, "robust" needs every fold, today's rules read from settings, the file is
+  only read. 6 mutants.
 - **A survivor can mean the test is weak** (LESSON L-15): build a "same path, different spelling" input as a plain
   string (`pathlib` drops `/./` by itself), and keep one owner per invariant.
 - **Wallet tracer** (doc 09): golden test from the anonymised case study, every classify rule at its boundary, one

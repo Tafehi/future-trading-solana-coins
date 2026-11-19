@@ -43,6 +43,10 @@ JUPITER_HISTORY_SOURCE = "api" # 2026-11-18 (D-29): Jupiter's free trade API fir
 JUPITER_HISTORY_CALLS_PER_DAY = 20000  # Chainstack calls a day, now for the chain FALLBACK only
 JUPITER_MIN_EPISODES = 8       # D-29: was 15; below JUPITER_FULL_PROOF_EPISODES the needed PF grows (jobs/jupiter.proof)
 JUPITER_MIN_RECORD_DAYS = 1.0  # D-29: was 14; the API gives every owner 90 days of record on its first read
+# D-31 (2026-11-19, tools/criteria_backtest.py): the three rules that kept the picked wallets profitable in every window
+MAX_BIGGEST_WIN_SHARE = 0.5    # the biggest single win may be at most half of the profit (was 1.0 = off)
+JUPITER_MIN_WIN_RATE = 0.4     # at least 40% of the trades win
+JUPITER_MAX_IDLE_DAYS = 14.0   # a closed trade in the last 14 days, or it is not picked
 
 # ── Trader feed (2026-11-19, D-30: scout + trader, the Solana websocket) ─────────────────────────────
 SOLANA_WS_MAX_SUBSCRIPTIONS = 100  # one programSubscribe per copy-list owner; above it the 30-s poll alone

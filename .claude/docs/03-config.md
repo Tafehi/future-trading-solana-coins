@@ -83,3 +83,13 @@ Boot refuses one file for both programs (`SCOUT_DB_PATH` == `TRADER_DB_PATH` aft
 `docker-compose.yml`, not settings): `LOG_DIR` (`/app/logs/scout`, `/app/logs/trader`) and `HEALTH_URL` (the image's
 healthcheck).
 
+## Settings changed on 2026-11-19 (D-31: three copy-list rules from the backtest)
+
+| Setting | Default | What |
+|---|---|---|
+| `MAX_BIGGEST_WIN_SHARE` | 0.5 (was 1.0, off) | an owner whose biggest single win is more than half of its total profit is BRONZE |
+| `JUPITER_MIN_WIN_RATE` | 0.4 | an owner whose trades win less often is BRONZE (0 = off) |
+| `JUPITER_MAX_IDLE_DAYS` | 14 | an owner with no closed trade in this many days is not picked (neither tracked nor watched) |
+
+All three are in `app/settings.toml` too. The wallet-rule backtest reads them, so its "now" line always shows the
+rules the scout runs.

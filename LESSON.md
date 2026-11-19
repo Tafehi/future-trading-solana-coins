@@ -56,3 +56,8 @@ L-1 to L-10 come from the copy-trading bot (removed 2026-11-17, D-26); they stay
   drops the `/./` by itself, so normalisation was never exercised: build such inputs as plain strings. (2) The
   websocket cleared its subscription state in two places, so removing one changed nothing: keep one owner of each
   invariant, so that losing it shows.
+- **L-16 — A copied Terraform folder is never "just old": it points at the live state.** `audit/old-bot/infra` (the
+  copy made for the 2026-11-17 destroy) kept the backend key `future-trading-solana-coins/terraform.tfstate`. After CI
+  rebuilt the box on 2026-11-18 with the same key, a second `terraform destroy` in that folder would have destroyed
+  the LIVE box, bucket and image repo. Found during the 2026-11-19 cleanup and deleted. Delete such a copy as soon as
+  its one destroy is done.

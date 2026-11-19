@@ -169,7 +169,8 @@ repo became `future-trading-kucoins` (Hyperliquid -> KuCoin); this one is `futur
 - **New guards:** `test_no_trading_or_bot_code_comes_back` (red on the first run: two leftover bot words), the tool
   imports with no env; `scripts/checks.py` rewritten for this repo with a new `case-addresses` check (no real case
   wallet outside `audit/`). `precommit.sh` runs the checks, lint, types, tests, the CLI and the mutants.
-- **For the destroy:** `audit/old-bot/` holds a copy of `infra/` plus the three host files it reads (git-ignored).
+- **For the destroy:** `audit/old-bot/` holds a copy of `infra/` plus the three host files it reads (git-ignored;
+  deleted on 2026-11-19: it pointed at the live Terraform state, LESSON L-16).
 - **Explained:** how the removed bot worked, with diagrams, in `audit/bot-explained/` (local only).
 - **Destroyed (user, 2026-11-17):** `terraform destroy` from `audit/old-bot/infra` removed all 21 resources (box
   `i-05ad4a52b74d57842`, bucket `solana-future-coin-data-…` with its backups, ECR repo, role, profile, SG, policies).
@@ -259,3 +260,28 @@ repo became `future-trading-kucoins` (Hyperliquid -> KuCoin); this one is `futur
   owners, so the pool would have shrunk for about a day. `jobs/jupiter.seed_owners` copies the owner list once from
   the trader's file (read-only; an owner the feed already saw keeps the earlier first-seen and the larger size) and
   the API reads every past again, biggest first. 3 tests, 4 mutants.
+
+## 2026-11-19 — The wallet-rule backtest (user: "find the best criteria ... selecting many best wallets")
+
+- **Why:** the box had 1,331 owners and 97 passing wallets (74 GOLD, 23 SILVER); the user wants as many good wallets
+  as possible, decided on data, not guesses.
+- **What:** `app/tools/criteria_backtest.py` (laptop, read-only, no network): walk-forward over 3 folds of 10 days,
+  every owner graded on the past only with the bot's own math, judged on the trades it opened next; 64,512 rule sets
+  via bit masks (under 1 s for 1,331 owners); robust = pooled PF >= 1.3 and mean > 0 in every fold; today's rules from
+  settings in every report. `scripts/collect_evidence.sh` runs it (`analysis/criteria/`). 9 tests, 6 mutants.
+- **Next:** the user runs `scripts/collect_evidence.sh`; the results decide a proposal for new rules (their own
+  decision row), checked against the shadow copies as they close.
+
+## 2026-11-19 — Three copy-list rules from the backtest (D-31)
+
+- **Backtest result (the box's scout.db, 1,291 owners, 3 windows of 10 days):** the old pool (93 wallets) pooled PF
+  1.12 / 0.98 / 1.44; best win <= 50% of the profit + win rate >= 40% + a close in the last 14 days: 1.93 / 1.34 / 1.90
+  (46 wallets). The scalper filter, 8 trades and the PF bars stay.
+- **Code:** `MAX_BIGGEST_WIN_SHARE` 0.5 (was 1.0); new `JUPITER_MIN_WIN_RATE` (grade: BRONZE) and `JUPITER_MAX_IDLE_DAYS`
+  (pick: skipped); the backtest's "now" rules read them. `test_copy_list_rules.py` (each boundary value passes);
+  6 mutants. Open: B-31 (chosen on the owners' exits; the shadow copies decide).
+- **Verified on the box from the 10:17 UTC backups (D-30's first hour):** the seed copied 1,336 owners, all 1,351 pasts
+  read again, a pick every 5 minutes; the trader knows 298 accounts of 93 owners; the first websocket OPEN reached us
+  0.9 s after the wallet's open (was about 30 s with the poll).
+- **Cleanup (user):** `audit/old-bot/` deleted (it pointed at the live Terraform state, LESSON L-16) and the outdated
+  `audit/bot-explained/` diagrams.

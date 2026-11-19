@@ -180,6 +180,21 @@ mut $HE '    if not worker_alive:' '    if False:' 'dead_feed_worker'
 mut app/config.py 'if os.path.abspath(self.scout_db_path) == os.path.abspath(self.trader_db_path):' 'if self.scout_db_path == self.trader_db_path:' 'one_file_for_both'
 mut app/config.py 'if self.copylist_max_age_s < 2 * self.jupiter_grade_minutes * 60:' 'if self.copylist_max_age_s <= 2 * self.jupiter_grade_minutes * 60:' 'cover_two_picks'
 mut app/runtime.py '        waits.append(asyncio.ensure_future(wake.wait()))' '        pass' 'wake_starts_the_next_pass'
+# 2026-11-19: the wallet-rule backtest (laptop tool): no look-ahead AT the cutoff, fees, the robust bar
+CB=app/tools/criteria_backtest.py
+mut $CB '    eps = [t for t in trades if t.closed < cutoff]' '    eps = [t for t in trades if t.closed <= cutoff]' 'no_look_ahead'
+mut $CB 'if cutoff <= t.opened < cutoff + horizon_s' 'if cutoff < t.opened < cutoff + horizon_s' 'no_look_ahead'
+mut $CB '    return (move if t.side == "long" else -move) - 2 * TAKER_FEE_PCT' '    return (move if t.side == "long" else -move) - TAKER_FEE_PCT' 'two_taker_fees'
+mut $CB '        return all(x.ok for x in self.results)' '        return any(x.ok for x in self.results)' 'robust_needs_every_fold'
+mut $CB 'self.pooled_pf is not None and self.pooled_pf >= GOOD_MIN_PF' 'self.pooled_pf is not None and self.pooled_pf > GOOD_MIN_PF' 'robust_needs_every_fold'
+mut $CB 'p.pf_proof >= r.min_pf * p.proof_scale)' 'p.pf_proof >= r.min_pf)' 'same_answer_as_passes'
+# 2026-11-19 (D-31): the three copy-list rules the backtest chose, each AT its boundary, and their defaults
+mut $JU 'if st.biggest_win_share is not None and st.biggest_win_share > settings.max_biggest_win_share:' 'if st.biggest_win_share is not None and st.biggest_win_share >= settings.max_biggest_win_share:' 'exactly_half_the_profit'
+mut $JU '    if need_wr > 0 and (st.win_rate is None or st.win_rate < need_wr):' '    if need_wr > 0 and (st.win_rate is None or st.win_rate <= need_wr):' 'exactly_40_percent'
+mut $JU 'if last is None or at - float(last) > idle_s:' 'if last is None or at - float(last) >= idle_s:' 'idle_longer_than_14_days'
+mut app/config.py 'max_biggest_win_share: float = Field(default=0.5,' 'max_biggest_win_share: float = Field(default=1.0,' 'd31_values'
+mut app/config.py 'jupiter_min_win_rate: float = Field(default=0.4,' 'jupiter_min_win_rate: float = Field(default=0.0,' 'd31_values or exactly_40_percent'
+mut app/config.py 'jupiter_max_idle_days: float = Field(default=14.0,' 'jupiter_max_idle_days: float = Field(default=90.0,' 'd31_values or idle_longer_than_14_days'
 # The scout's one-time owner seed (a fresh scout.db must not forget the single bot's 1,331 owners)
 mut app/scout.py '        await jupiter.seed_owners(settings.trader_db_path)' '        pass' 'seeds_at_boot'
 mut app/db/crossread.py '    async with store.session(trader_db, read_only=True) as conn:

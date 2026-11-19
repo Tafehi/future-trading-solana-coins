@@ -23,14 +23,17 @@ follows the money behind a wallet. Split on 2026-11-14 from `future-trading-coin
 
 ## Current state (2026-11-19)
 
-- **Two programs (D-30, user: "Split + websocket"), built, NOT pushed yet:** the SCOUT (`python -m app.scout`,
+- **Two programs (D-30, user: "Split + websocket"), running since 2026-11-19 (`e9f94dc`):** the SCOUT (`python -m app.scout`,
   `solana-future-coin-scout`, /health 8080) finds, grades and picks, writes `data/scout.db`, never trades or sends
   Telegram. The TRADER (`python -m app.trader`, `solana-future-coin-trader`, /health 8081) follows the picked wallets
   on a Solana websocket (+ a 30-s poll), copies, exits, keeps the ledger, sends Telegram, writes
-  `data/solana-future-coin.db`. Copy delay: about 3 s instead of about 30 s. After the push: up to a 10-minute pause,
-  then about 20 minutes until the scout's first full copy list (doc 04). B-1 closes when `statusCheck.sh` ends
+  `data/solana-future-coin.db`. Copy delay: about 1-3 s instead of about 30 s. B-1 closes when `statusCheck.sh` ends
   `ALL OK` with both containers; B-27 watches the websocket on Chainstack.
 - The box was rebuilt on 2026-11-18 (D-26 reversed, D-28): new IP, a fresh $10,000 paper account.
+- **Wallet rules (D-31, 2026-11-19, from `tools/criteria_backtest.py`):** biggest single win <= 50% of the profit,
+  win rate >= 40%, a close in the last 14 days. Old pool 93 wallets (pooled PF 1.12 / 0.98 / 1.44 in the backtest
+  windows), new pool 46 (1.93 / 1.34 / 1.90). The shadow copies decide whether it holds (B-31).
+- **D-30 verified on the box** (10:17 UTC backups): seed 1,336 owners, first websocket OPEN 0.9 s after the wallet's.
 - **Next (D-28, user):** change how wallets are found: start from Hyperliquid holder wallets (big PnL, $0 volume),
   follow the money back with the tracer to the hidden bot wallets, and copy what those bots trade. Not built yet.
 - **Mode:** paper, account `paper-1`, $10,000, 3x isolated, max 10 positions, 6% margin per full-weight trade.

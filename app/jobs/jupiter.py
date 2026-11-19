@@ -22,6 +22,9 @@ owner, so almost nobody waits). No account value is public, so the Hyperliquid r
 - drawdown = the largest fall of cumulative episode PnL, divided by the owner's largest position size
 - GOLD = PF >= GOLD_MIN_PROFIT_FACTOR, drawdown <= GOLD_MAX_DRAWDOWN, total PnL > 0, no single episode above
   MAX_BIGGEST_WIN_SHARE of the profit, median hold not a scalper's.
+- D-31 (2026-11-19, the wallet-rule backtest `tools/criteria_backtest.py`): MAX_BIGGEST_WIN_SHARE is 0.5 (was 1.0, off),
+  an owner whose trades win less than JUPITER_MIN_WIN_RATE (40%) of the time is BRONZE, and `pick_owners` skips an
+  owner whose last close is older than JUPITER_MAX_IDLE_DAYS (14). Each boundary value itself passes.
 - Fewer than JUPITER_FULL_PROOF_EPISODES (15) closed episodes: the profit factor NEEDED for GOLD and SILVER is
   multiplied by sqrt(15 / episodes) (8 episodes: GOLD needs 2.46, SILVER 1.92), a wallet with no loss yet counts as if
   it had one loss of its average size (PF = its episode count), and its copy weight is capped at
@@ -246,6 +249,10 @@ def grade_episodes(
         figures += f" (few trades: GOLD needs PF {need_gold:.2f}, SILVER {need_silver:.2f})"
     if st.biggest_win_share is not None and st.biggest_win_share > settings.max_biggest_win_share:
         return wg.Grade(style, wg.BRONZE, f"{figures}: one trade made {st.biggest_win_share:.0%} of the profit"), st, dd
+    need_wr = settings.jupiter_min_win_rate
+    if need_wr > 0 and (st.win_rate is None or st.win_rate < need_wr):
+        why = f"{figures}: wins {st.win_rate or 0:.0%} of its trades (needs {need_wr:.0%})"
+        return wg.Grade(style, wg.BRONZE, why), st, dd
     if pf is not None and pf >= need_gold and dd is not None and dd <= settings.gold_max_drawdown:
         return wg.Grade(style, wg.GOLD, figures), st, dd
     if pf is not None and pf >= need_silver:
@@ -342,14 +349,20 @@ async def pick_owners(*, now: float | None = None, graded: int = 0, shadow_db: s
         shadows = await crossread.shadow_stats(shadow_db, read_only=shadow_db is not None, now=at)
     except Exception as exc:  # noqa: BLE001 — any read failure: keep the old pick
         raise ShadowUnreadable(f"shadow record unreadable ({type(exc).__name__}); the pick is kept") from exc
+    idle_s = settings.jupiter_max_idle_days * 86400
     async with store.session() as conn:
         async with conn.execute(
-            "SELECT address, tier, count_score FROM wallets WHERE source = ? AND graded_at >= ?",
+            "SELECT address, tier, count_score, last_fill_at FROM wallets WHERE source = ? AND graded_at >= ?",
             (SOURCE, at - settings.track_max_grade_age_hours * 3600),
         ) as cur:
             rows = await cur.fetchall()
         cands = []
+        idle = 0
         for r in rows:
+            last = r["last_fill_at"]
+            if last is None or at - float(last) > idle_s:
+                idle += 1  # D-31: not trading now (no close in JUPITER_MAX_IDLE_DAYS): neither tracked nor watched
+                continue
             sh = shadows.get(str(r["address"]))
             cands.append(
                 selection.Candidate(str(r["address"]), str(r["tier"]), float(r["count_score"] or 0.0),
@@ -365,5 +378,6 @@ async def pick_owners(*, now: float | None = None, graded: int = 0, shadow_db: s
             await conn.execute("UPDATE wallets SET watched = 1 WHERE address = ?", (owner,))
         await meta.put(conn, PICKED_AT_KEY, at, now=at)  # with the flags: the trader ages the list by this
     if graded:
-        logger.info("jupiter: graded %d owners, tracking %d, watching %d", graded, len(tracked), len(watched))
+        logger.info("jupiter: graded %d owners, tracking %d, watching %d, %d idle skipped", graded, len(tracked),
+                    len(watched), idle)  # fmt: skip
     return len(tracked)
