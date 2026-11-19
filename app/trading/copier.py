@@ -2,7 +2,8 @@
 
 `handle_pending` reads every unhandled `signals` row, oldest first:
 - CLOSE: recorded only. Our own exits decide (ai-kucoin-future E-2/E-4: following the wallet's close lost money).
-- OPEN: STALE -> NOT_TRACKED (not tracked or watched, or not GOLD/SILVER) -> NOT_LISTED -> market gate -> probe gate
+- OPEN: STALE -> LIST_STALE (the scout's copy list is old, D-30) -> NOT_TRACKED (not on the CURRENT copy list, or not
+  GOLD/SILVER) -> NOT_LISTED -> market gate -> probe gate
   -> shadow copy (item 4; a watched wallet stops here, SHADOW_ONLY) -> account limits (with REPLACED for a clearly
   better wallet) -> sizing (SILVER weight capped at SILVER_MAX_WEIGHT, item 5) -> executor -> ledger -> (live) exchange
   stop order.
@@ -23,6 +24,7 @@ from app.data.market import MarketCache
 from app.db import store
 from app.trading import futures_paper as fp
 from app.trading import ledger, shadow
+from app.trading.copylist import CopyList
 from app.trading.executor import Executor
 from app.utils.logging import get_logger
 
@@ -57,10 +59,11 @@ async def close_one(
 
 
 class Copier:
-    def __init__(self, kf: KucoinFutures, market: MarketCache, executor: Executor) -> None:
+    def __init__(self, kf: KucoinFutures, market: MarketCache, executor: Executor, copylist: CopyList) -> None:
         self.kf = kf
         self.market = market
         self.executor = executor
+        self.copylist = copylist  # the scout's picks, in memory (D-30): no database read during a trade
 
     async def _mark(
         self, sid: int, *, refused: str = "", detail: str = "", symbol: str = "", copied: bool = False
@@ -93,21 +96,20 @@ class Copier:
                 opened.append(pid)
         return opened
 
-    async def _wallet(self, address: str) -> dict[str, Any] | None:
-        async with store.session() as conn:
-            async with conn.execute("SELECT * FROM wallets WHERE address = ?", (address,)) as cur:
-                row = await cur.fetchone()
-        return dict(row) if row else None
-
     async def _open(self, s: dict[str, Any], at: float) -> int | None:
         sid = int(s["id"])
         if at - float(s["ts"]) > settings.signal_max_age_s:
             await self._mark(sid, refused="STALE", detail=f"{at - float(s['ts']):.0f}s old")
             return None
-        w = await self._wallet(str(s["wallet"]))
+        if self.copylist.stale(at):
+            age = self.copylist.age(at)
+            why = "the scout never picked" if age is None else f"the scout's pick is {age:.0f}s old"
+            await self._mark(sid, refused="LIST_STALE", detail=why)
+            return None
+        w = self.copylist.get(str(s["wallet"]))
         tiers = selection.eligible_tiers()
-        if w is None or not (w["tracked"] or w["watched"]) or w["tier"] not in tiers:
-            await self._mark(sid, refused="NOT_TRACKED", detail=f"wallet not a tracked or watched {'/'.join(tiers)}")
+        if w is None or w.tier not in tiers:
+            await self._mark(sid, refused="NOT_TRACKED", detail=f"wallet not on the copy list as {'/'.join(tiers)}")
             return None
         mapping = self.market.mapping.get(str(s["coin"]))
         if mapping is None:
@@ -123,14 +125,14 @@ class Copier:
             return None
         entry = float(s["wallet_entry_px"] or 0) * mapping.price_scale
         refusal = gates.market_gate(contract=contract, book=book, side=side, wallet_entry_px=entry)
-        weight = int(w.get("copy_weight") or wg.MIN_COPY_WEIGHT)
-        if w["tier"] == wg.SILVER:
+        weight = int(w.copy_weight or wg.MIN_COPY_WEIGHT)
+        if w.tier == wg.SILVER:
             weight = min(weight, settings.silver_max_weight)  # item 5: SILVER copies stay small
         if refusal is None:
             refusal = gates.probe_gate(
                 notional=float(s["wallet_size"] or 0),
-                account_value=float(w.get("account_value") or 0),
-                tier=str(w["tier"]),
+                account_value=float(w.account_value or 0),
+                tier=w.tier,
                 copy_weight=weight,
             )
         if refusal:
@@ -142,14 +144,14 @@ class Copier:
         if settings.shadow_enabled:
             async with store.session() as conn:
                 await shadow.open_shadow(
-                    conn, wallet=str(s["wallet"]), source=str(s["source"]), tier=str(w["tier"]), signal_id=sid,
+                    conn, wallet=str(s["wallet"]), source=str(s["source"]), tier=w.tier, signal_id=sid,
                     contract=contract, coin=str(s["coin"]), side=side, book=book, now=at,
                 )  # fmt: skip
-        if not w["tracked"]:
+        if not w.tracked:
             await self._mark(sid, refused="SHADOW_ONLY", detail="watched wallet: shadow copy only", symbol=symbol)
             return None
 
-        score = float(w.get("score") or 0.0)
+        score = float(w.score or 0.0)
         refusal = await self._make_room(symbol, score, at=at, fallback_px=book.mid)
         if refusal:
             await self._mark(sid, refused=refusal.code, detail=refusal.detail, symbol=symbol)
@@ -186,7 +188,7 @@ class Copier:
                 conn, account=settings.account, symbol=symbol, coin=str(s["coin"]), side=side,
                 contracts=fill.contracts, multiplier=contract.multiplier, entry_px=fill.avg_px,
                 leverage=settings.leverage, mmr=contract.mmr, fee=fill.fee, now=at, signal_id=sid,
-                wallet=str(s["wallet"]), source=str(s["source"]), tier=str(w["tier"]), copy_weight=weight,
+                wallet=str(s["wallet"]), source=str(s["source"]), tier=w.tier, copy_weight=weight,
                 score=score, order_id=fill.order_id,
             )  # fmt: skip
         await self._mark(sid, copied=True, symbol=symbol, detail=f"position #{pid}")

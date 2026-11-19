@@ -13,7 +13,8 @@ from app.db import store
 
 
 async def run(db: str | None, account: str) -> int:
-    async with store.session(db) as conn:
+    # The trader's file (positions and the account live there since D-30), opened read-only: never created.
+    async with store.session(db or settings.trader_db_path, read_only=True) as conn:
         async with conn.execute(
             "SELECT net_pnl, closed_at, wallet, reason FROM positions WHERE account = ? AND status = 'CLOSED'",
             (account,),

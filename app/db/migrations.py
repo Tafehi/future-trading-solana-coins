@@ -258,7 +258,33 @@ CREATE UNIQUE INDEX IF NOT EXISTS jup_episodes_api ON jup_episodes (position_key
 UPDATE jup_owners SET backfilled_at = NULL WHERE backfilled_at IS NOT NULL;
 """
 
-MIGRATIONS: list[str] = [_V1, _V2, _V3]
+# 2026-11-18 (D-30): the trader's own view of the copy-list owners' Position accounts (websocket + safety-net poll),
+# and signals that know which account and which open they came from. The unique index makes a second signal for the
+# same open impossible, whatever saw it (socket, poll, a restart). Both program files share this schema; each program
+# writes only its own tables.
+_V4 = """
+CREATE TABLE IF NOT EXISTS feed_positions (
+    pubkey TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    coin TEXT NOT NULL,
+    side TEXT NOT NULL,
+    size_usd REAL NOT NULL,
+    entry_px REAL NOT NULL,
+    open_time INTEGER NOT NULL,
+    update_time INTEGER NOT NULL,
+    slot INTEGER NOT NULL DEFAULT 0,
+    seen_at REAL NOT NULL,
+    via TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS feed_positions_owner ON feed_positions (owner);
+ALTER TABLE signals ADD COLUMN position_key TEXT;
+ALTER TABLE signals ADD COLUMN open_time INTEGER;
+ALTER TABLE signals ADD COLUMN via TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS signals_once ON signals (position_key, open_time, kind)
+    WHERE position_key IS NOT NULL;
+"""
+
+MIGRATIONS: list[str] = [_V1, _V2, _V3, _V4]
 SCHEMA_VERSION = len(MIGRATIONS)
 
 

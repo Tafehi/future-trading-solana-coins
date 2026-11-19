@@ -18,10 +18,22 @@ Back to the index: [CLAUDE.md](../../CLAUDE.md).
   `BOT_NAME` stamp, the `solana-bot/` folders, the Jupiter coin map, and every wallet-tracer rule) and requires its test to go red. A survivor fails the build. Runs with
   `PYTHONDONTWRITEBYTECODE=1` and clears `__pycache__` per mutant (DEBUG D-1).
 - **Boundaries are tested at the value** (`<=` vs `>`): stop at exactly 6%, risk limit exactly at the level, drift
-  exactly $0.01, replace gap exactly 1.0, alarm repeat exactly 3600 s.
+  exactly $0.01, replace gap exactly 1.0, alarm repeat exactly 3600 s; since D-30 also freshness exactly 60 s,
+  size exactly $1,000, copy-list age exactly 600 s, websocket down exactly 300 s, backoff reset after exactly 60 s up.
+- **The two programs (D-30):** `test_programs.py` (subprocess imports: the scout loads no trading / Telegram code,
+  the trader no grading / history code; the runtime's `wake`; the settings that keep the files apart; the pick's time
+  and fail-closed retry; the trader end to end from the scout's file to a paper position), `test_position_feed.py`
+  (`decide()` and the once-only signal), `test_solana_ws.py` (a fake socket: subscribe shape, diff, reconnect,
+  backoff, pong, the URL never logged), `test_copylist.py` (read-only cross reads, LIST_STALE / NOT_TRACKED /
+  SHADOW_ONLY, a dropped wallet's copy still exits), `test_health.py` (each program's loops = its limits). Copier
+  tests use `helpers.TableCopyList` (reads the test database's `wallets` on every lookup). Accounts in websocket tests
+  are a fixture account with rewritten fields (`helpers.position_account`), so no address is typed.
+- **A survivor can mean the test is weak** (LESSON L-15): build a "same path, different spelling" input as a plain
+  string (`pathlib` drops `/./` by itself), and keep one owner per invariant.
 - **Wallet tracer** (doc 09): golden test from the anonymised case study, every classify rule at its boundary, one
   mutant per rule, Telegram + Secrets Manager on fakes. Fixtures come from `scripts/make_trace_fixtures.py` (run by
   hand from `audit/`). The bot never imports the tracer (subprocess test).
 - **Repo checks:** `scripts/checks.py` (user-data size, heredocs parse, no secrets, CLAUDE.md size, no `environment:`,
-  `evidence-read-only`, `host-guards`, `case-addresses`), each with `--self-test`.
+  `evidence-read-only`, `host-guards` (incl. backup and restore of both files), `compose` (`entrypoint:` only, no image
+  ENTRYPOINT, LESSON L-14), `case-addresses`), each with `--self-test`.
 - **Before every push:** `scripts/verify_clone.sh` runs the checks and tests on a fresh clone of HEAD (DEBUG D-4).

@@ -6,7 +6,7 @@ Back to the index: [CLAUDE.md](../../CLAUDE.md). Every number below is a setting
 Jupiter Perps is this bot's only source since the split (2026-11-14, D-19). The Hyperliquid rules (leaderboard
 prefilter, trade stream, 90-day fills, `live_check`) stayed in `future-trading-kucoins`.
 
-## Jupiter Perps wallets (`jobs/jupiter.py`, `jobs/jupiter_history.py`, D-6, D-7, D-14)
+## Jupiter Perps wallets — the SCOUT (`jobs/jupiter.py`, `jobs/jupiter_history.py`, D-6, D-7, D-14, D-30)
 
 - Recorded from the change feed: every open and close >= $1,000; a close becomes an episode valued at the KuCoin MARK
   of the same coin at that moment (BUG B-7).
@@ -30,7 +30,25 @@ prefilter, trade stream, 90-day fills, `live_check`) stayed in `future-trading-k
 1. Eligible: GOLD and SILVER. 2. A wallet with 5+ shadow copies in 14 days and a mean <= 0% is NOT tracked (copying
 it loses), only watched. 3. Order: proven wallets (5+ copies, mean > 0) by mean, then GOLD by grade score, then SILVER.
 4. Tracked = the first `JUPITER_MAX_TRACKED` (20), at most `MAX_TRACKED_SILVER` (10) SILVER. The rest are watched
-(free: the change feed sees every owner). Re-picked after each grading, every 5 min.
+(the trader's websocket follows them too, for fast shadow entries). Re-picked after each grading, every 5 min. The
+pick writes `jup:picked_at` with the flags; when the trader's shadow record cannot be read, the pick FAILS CLOSED (the
+old flags and time stay, retried in 60 s), so a broken read never re-tracks a wallet whose copies lose.
+
+## The trader's feed: from an open on Jupiter to a signal (`trading/watch.py`, `data/solana_ws.py`, D-30)
+
+- The trader reads the copy list (tracked + watched) from the scout's file once a minute and subscribes one Solana
+  `programSubscribe` per owner (filters `dataSize 216` + `memcmp offset 8 = owner`, commitment `confirmed`), tracked
+  first by grade, up to `SOLANA_WS_MAX_SUBSCRIPTIONS` (100). A change reaches it 1.3 s p50 / 1.9 s max after the fill
+  (measured 2026-11-18). A poll every `FEED_POLL_SECONDS` (30) re-reads the listed owners' known accounts with
+  `getMultipleAccounts` (never `getProgramAccounts`, which Chainstack caps at 3 per 20 s): the safety net.
+- `decide()`: OPEN when the account was flat, unknown or dust and is now open >= $1,000 AND the open is fresh
+  (now - openTime <= `SIGNAL_MAX_AGE_S`, 60 s). Subscribing sends no snapshot, so freshness, not a baseline, decides:
+  an old open first seen now is state only, and an open made during a restart is still copied when young. An account
+  whose openTime changed between two looks = CLOSE of the old open + the OPEN rule for the new one. Open -> 0 = CLOSE
+  (record only). Adds / reduces: state only. The state moves only forward by (updateTime, slot); a repeat is ignored.
+- A signal is written only for an owner on the CURRENT list; a unique index on (account, openTime, kind) makes a
+  second signal for one open impossible (socket + poll + restart). The signal keeps `via` (ws / poll) and `open_time`,
+  so the copy delay is measured: `ts - open_time` (statusCheck 4c). A written signal wakes the copier at once.
 
 ## Shadow copies (`trading/shadow.py`, item 4)
 
@@ -40,8 +58,10 @@ best ask/bid, our exits on the market cache's mark prices, return = price % in o
 
 ## From signal to position (`trading/copier.py`)
 
-OPEN only (flat -> open); ADD / REDUCE ignored; CLOSE recorded only. Refusals, in order: STALE (> 60 s), NOT_TRACKED,
-NOT_LISTED, (shadow copy here; a watched wallet stops with SHADOW_ONLY), market gate (LOW_TURNOVER < $500k, NO_BOOK, SPREAD > 15 bps, ENTRY_DRIFT > 1.5%, FUNDING_AGAINST > 0.1%),
+OPEN only (flat -> open); ADD / REDUCE ignored; CLOSE recorded only. Refusals, in order: STALE (> 60 s), LIST_STALE
+(the scout's last pick is older than `COPYLIST_MAX_AGE_S`, 600 s, or never happened: an old list proves nothing;
+exits of open copies continue), NOT_TRACKED (not on the CURRENT copy list as GOLD/SILVER: a wallet the scout dropped
+gets no new copy, its open copies keep their exits), NOT_LISTED, (shadow copy here; a watched wallet stops with SHADOW_ONLY), market gate (LOW_TURNOVER < $500k, NO_BOOK, SPREAD > 15 bps, ENTRY_DRIFT > 1.5%, FUNDING_AGAINST > 0.1%),
 SMALL_PROBE, account (HALTED, PAUSED, SYMBOL_HELD, MAX_POSITIONS 10 — a wallet scoring >= 1.0 higher REPLACES the
 lowest-score copy), TOO_SMALL, INSUFFICIENT_MARGIN, then the executor's own refusals.
 

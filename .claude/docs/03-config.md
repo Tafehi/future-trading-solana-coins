@@ -20,7 +20,8 @@ reaches a running box; an unreadable secret keeps the last `.env` and `statusChe
 | `KUCOIN_API_KEY`, `KUCOIN_API_SECRET` | live orders | present, but IP-locked to the KuCoin box: unusable from here (B-3) |
 | `KUCOIN_API_PASSPHRASE` | live orders (KuCoin signs every private call with it) | present since 2026-11-13, unused until live (B-3) |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | the digest and alarms (same chat as the KuCoin bot; `BOT_NAME` tells them apart) | present |
-| `SOLANA_RPC_URL` | the ONLY source: Jupiter change feed and history (Chainstack HTTPS URL) | present since 2026-11-13, never used from a box yet — B-5 |
+| `SOLANA_RPC_URL` | the ONLY source: the scout's change feed and history, the trader's safety-net poll (Chainstack HTTPS URL) | present since 2026-11-13 |
+| `SOLANA_WS_URL` | optional: the trader's websocket. Unset = `SOLANA_RPC_URL` with `https://` -> `wss://` (a Chainstack Global Node serves WSS on the same host and key, D-30). A SECRET (the key is inside): never in `settings.toml`, never logged | not set (derived) |
 | `HEARTBEAT_URL` | optional healthchecks.io ping | optional |
 
 `solana-future-coin-env-refresh` renders every key (`jq to_entries`), so adding a key needs no code change; the bot restarts
@@ -29,11 +30,11 @@ only when the file changed.
 ## Mode switches
 
 - `MODE = "paper" | "live"`. Live refuses to boot (non-zero exit) without key, secret, passphrase and
-  `LIVE_START_BALANCE > 0`; then the pre-flight (`main.live_preflight`) refuses unless a signed call works, futures
+  `LIVE_START_BALANCE > 0`; then the pre-flight (`trader.live_preflight`) refuses unless a signed call works, futures
   equity >= `LIVE_START_BALANCE` and KuCoin holds no position the bot does not know.
 - `PAPER_EPOCH` change = a fresh paper account (old rows kept under the old name).
-- Kill switch: the file `data/STOP` (host: `/opt/solana-future-coin/data/STOP`) closes everything and stops; while it
-  exists the process idles at boot.
+- Kill switch: the file `data/STOP` (host: `/opt/solana-future-coin/data/STOP`): the TRADER closes everything and
+  stops; while it exists the trader idles at boot. The scout ignores it (it never trades) and keeps recording.
 
 ## Settings that changed in the split (2026-11-14, D-19)
 
@@ -63,4 +64,22 @@ only when the file changed.
 
 `JUPITER_HISTORY_CALLS_PER_DAY` (20,000) still caps Chainstack calls, now for the chain fallback only. Boot refuses
 `JUPITER_MIN_EPISODES > JUPITER_FULL_PROOF_EPISODES` and an unknown `JUPITER_HISTORY_SOURCE`.
+
+## Settings added on 2026-11-19 (D-30: scout + trader, the websocket feed)
+
+| Setting | Default | What |
+|---|---|---|
+| `SCOUT_DB_PATH` | `data/scout.db` | the scout's own file (the scout sets `DB_PATH` to it at start, `runtime.use_db`) |
+| `TRADER_DB_PATH` | `data/solana-future-coin.db` | the trader's own file (the paper account of before); tools default to it |
+| `SCOUT_HEALTH_PORT`, `TRADER_HEALTH_PORT` | 8080, 8081 | replace `HEALTH_PORT` |
+| `SOLANA_WS_URL` | derived | see the secret table above |
+| `SOLANA_WS_MAX_SUBSCRIPTIONS` | 100 | one `programSubscribe` per owner (filters are AND only); above it the poll alone covers the rest |
+| `FEED_POLL_SECONDS` | 30 | the trader's safety-net poll (`getMultipleAccounts`, 100 accounts a call) |
+| `COPYLIST_MAX_AGE_S` | 600 | the scout's pick older than this -> new opens refused `LIST_STALE`; exits continue |
+| `COPYLIST_REFRESH_S` | 60 | how often the trader reads the copy list |
+
+Boot refuses one file for both programs (`SCOUT_DB_PATH` == `TRADER_DB_PATH` after normalising the path) and
+`COPYLIST_MAX_AGE_S` below two picks (`2 x JUPITER_GRADE_MINUTES x 60`; exactly two is allowed). Per container (in
+`docker-compose.yml`, not settings): `LOG_DIR` (`/app/logs/scout`, `/app/logs/trader`) and `HEALTH_URL` (the image's
+healthcheck).
 

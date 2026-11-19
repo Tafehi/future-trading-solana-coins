@@ -1,9 +1,12 @@
-"""Jupiter Perps wallets: record, grade, and turn their trades into copy signals (signal source only).
+"""Jupiter Perps wallets: record, grade and pick (the SCOUT's job since D-30; it writes no signals any more).
+
+Signals come from the TRADER's own feed (websocket + safety-net poll, `trading/watch.py`), which only follows the
+wallets this module picks. Everything below records ALL owners so they can be graded.
 
 Every JUPITER_POLL_SECONDS the change feed (`data/jupiter_perps.updated_request`) returns every Position account
 updated in the current ~18 h block (and the previous block once, right after the block changes). Each account
 whose `updateTime` is newer than what we stored (table `jup_positions` holds the OPEN ones we know):
-- open now, unknown to us, opened after our last poll   -> OPEN (a signal if the owner is tracked)
+- open now, unknown to us, opened after our last poll   -> OPEN (counted; the trader's feed makes the signal)
 - open now, unknown, opened earlier (we were not looking) -> stored silently (old news, no signal)
 - open now and known                                     -> size/price updated (ADD / REDUCE ignored)
 - closed now (sizeUsd 0) and known                       -> CLOSE, plus an episode valued at the KuCoin MARK of the
@@ -25,7 +28,8 @@ owner, so almost nobody waits). No account value is public, so the Hyperliquid r
   JUPITER_SMALL_SAMPLE_MAX_WEIGHT. From 15 episodes on, nothing changes.
 - A grade is redone after every new close AND at least every JUPITER_REGRADE_HOURS, so a slow, good wallet does not
   fall out of the pool when its 72-hour-old grade expires (TRACK_MAX_GRADE_AGE_HOURS).
-The best JUPITER_MAX_TRACKED GOLD owners are tracked; their OPENs reach the copier like Hyperliquid ones.
+The best JUPITER_MAX_TRACKED owners are tracked (`core/selection.pick`), and `jup:picked_at` is written with the
+flags. The trader reads that list once a minute and follows those owners on its own websocket feed (D-30).
 """
 
 import math
@@ -40,16 +44,21 @@ from app.config import settings
 from app.core import selection
 from app.core import wallet_grader as wg
 from app.core import wallet_stats as ws
-from app.data.jupiter_perps import JupPosition
-from app.db import meta, store
-from app.trading import shadow
+from app.data.jupiter_perps import SOURCE, JupPosition
+from app.db import crossread, meta, store
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-SOURCE = "jupiter"
 BASELINE_GAP_POLLS = 3
-LAST_POLL_KEY = "jup:last_poll"
+LAST_POLL_KEY = crossread.LAST_POLL_KEY
+PICKED_AT_KEY = crossread.PICKED_AT_KEY
+SHADOW_RETRY_S = 60  # an unreadable shadow record retries the pick this soon
+SEED_KEY = "seed:owners_from_trader"
+
+
+class ShadowUnreadable(RuntimeError):
+    """The trader's shadow record could not be read: picking without it would re-track losing wallets."""
 
 
 @dataclass
@@ -91,9 +100,8 @@ def is_baseline(last: float | None, now: float) -> bool:
 
 
 async def _close(
-    conn: aiosqlite.Connection, old: dict[str, Any], marks: dict[str, float], tracked: dict[str, str], at: float,
-    res: SnapshotResult,
-) -> None:  # fmt: skip
+    conn: aiosqlite.Connection, old: dict[str, Any], marks: dict[str, float], at: float, res: SnapshotResult
+) -> None:
     res.closes += 1
     exit_px = marks.get(str(old["coin"]), 0.0)
     if exit_px > 0:
@@ -105,11 +113,6 @@ async def _close(
              float(old["open_time"]), at, pnl),
         )  # fmt: skip
         res.episodes += 1
-    if old["owner"] in tracked:
-        await _signal(
-            conn, str(old["owner"]), str(old["coin"]), "CLOSE", str(old["side"]), tracked[str(old["owner"])],
-            float(old["size_usd"]), float(old["entry_px"]), at,
-        )  # fmt: skip
     await conn.execute("DELETE FROM jup_positions WHERE pubkey = ?", (old["pubkey"],))
 
 
@@ -134,10 +137,6 @@ async def process_updates(
         res.baseline = is_baseline(last, at)
         async with conn.execute("SELECT * FROM jup_positions") as cur:
             known = {str(r["pubkey"]): dict(r) for r in await cur.fetchall()}
-        async with conn.execute(
-            "SELECT address, tier FROM wallets WHERE (tracked = 1 OR watched = 1) AND source = ?", (SOURCE,)
-        ) as cur:
-            tracked = {str(r["address"]): str(r["tier"]) for r in await cur.fetchall()}
         for p in positions:
             old = known.get(p.pubkey)
             if old is not None and p.update_time <= int(old.get("update_time") or 0):
@@ -156,14 +155,45 @@ async def process_updates(
                 await _store(conn, p, at)
                 if fresh_open:
                     res.opens += 1
-                    if p.owner in tracked:
-                        await _signal(
-                            conn, p.owner, p.coin, "OPEN", p.side, tracked[p.owner], p.size_usd, p.entry_px, at
-                        )
             elif old is not None:
-                await _close(conn, old, marks, tracked, at, res)
+                await _close(conn, old, marks, at, res)
         await meta.put(conn, LAST_POLL_KEY, at, now=at)
     return res
+
+
+async def seed_owners(trader_db: str, *, now: float | None = None) -> int:
+    """Once, on a fresh scout.db (D-30): add the owners the single bot recorded (its file is the trader's now, B-28).
+
+    Only the list (address, first seen, largest open size). Their past is read again from Jupiter's trade API, biggest
+    first, because `backfilled_at` stays empty. Without it a new scout knows only the owners whose accounts change in
+    the current block, and the API cannot list owners. An owner the feed already saw keeps the earlier first-seen time
+    and the larger size. A file that cannot be read seeds nothing and is tried again at the next start. Returns how
+    many owners were new."""
+    at = time.time() if now is None else now
+    async with store.session() as conn:
+        if await meta.get(conn, SEED_KEY) is not None:
+            return 0
+    try:
+        rows = await crossread.owners(trader_db)
+    except Exception as exc:  # noqa: BLE001 — no file (a new box) or no table: the change feed builds the list
+        logger.warning("seed: the trader's owner list is unreadable (%s); tried again at the next start",
+                       type(exc).__name__)  # fmt: skip
+        return 0
+    async with store.session() as conn:
+        async with conn.execute("SELECT COUNT(*) AS n FROM jup_owners") as cur:
+            before = int((await cur.fetchone() or {"n": 0})["n"])
+        await conn.executemany(
+            "INSERT INTO jup_owners (owner, first_seen, max_open_usd) VALUES (?, ?, ?) ON CONFLICT(owner) DO UPDATE "
+            "SET first_seen = MIN(jup_owners.first_seen, excluded.first_seen), "
+            "max_open_usd = MAX(jup_owners.max_open_usd, excluded.max_open_usd)",
+            rows,
+        )
+        async with conn.execute("SELECT COUNT(*) AS n FROM jup_owners") as cur:
+            added = int((await cur.fetchone() or {"n": 0})["n"]) - before
+        await meta.put(conn, SEED_KEY, added, now=at)
+    logger.info("seed: %d owners from the trader's file (%d new); their past is read again from the API", len(rows),
+                added)  # fmt: skip
+    return added
 
 
 async def known_pubkeys() -> list[str]:
@@ -181,29 +211,15 @@ async def verify_known(
     async with store.session() as conn:
         async with conn.execute("SELECT * FROM jup_positions") as cur:
             known = {str(r["pubkey"]): dict(r) for r in await cur.fetchall()}
-        async with conn.execute(
-            "SELECT address, tier FROM wallets WHERE (tracked = 1 OR watched = 1) AND source = ?", (SOURCE,)
-        ) as cur:
-            tracked = {str(r["address"]): str(r["tier"]) for r in await cur.fetchall()}
         for key, p in current.items():
             old = known.get(key)
             if old is None:
                 continue
             if p is None or not p.is_open:
-                await _close(conn, old, marks, tracked, at, res)
+                await _close(conn, old, marks, at, res)
             elif p.update_time > int(old.get("update_time") or 0):
                 await _store(conn, p, at)
     return res.closes
-
-
-async def _signal(
-    conn: object, owner: str, coin: str, kind: str, side: str, tier: str, size_usd: float, entry: float, at: float
-) -> None:
-    await conn.execute(  # type: ignore[attr-defined]
-        "INSERT INTO signals (ts, wallet, source, coin, kind, side, tier, wallet_size, wallet_entry_px, "
-        "wallet_leverage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
-        (at, owner, SOURCE, coin, kind, side, tier, size_usd, entry),
-    )
 
 
 def grade_episodes(
@@ -268,7 +284,7 @@ async def _owners_to_grade(at: float) -> list[tuple[str, float]]:
             return [(str(r["owner"]), float(r["start"])) for r in await cur.fetchall()]
 
 
-async def grade_owners(*, now: float | None = None) -> int:
+async def grade_owners(*, now: float | None = None, shadow_db: str | None = None) -> int:
     """Grade every owner with enough history (recorded or read from the chain, item 1) and a new closed episode, then
     pick tracked / watched Jupiter owners with `core/selection` (same rule as Hyperliquid). Returns how many are
     tracked."""
@@ -312,13 +328,20 @@ async def grade_owners(*, now: float | None = None) -> int:
                  st.total_pnl, grade.reason, at, recorded, parts.score, weight, statistics.median(
                      [float(r["size_usd"]) for r in rows]), float(rows[-1]["closed_at"]), wg.score(st, dd)),
             )  # fmt: skip
-    return await pick_owners(now=at, graded=len(owners))
+    return await pick_owners(now=at, graded=len(owners), shadow_db=shadow_db)
 
 
-async def pick_owners(*, now: float | None = None, graded: int = 0) -> int:
-    """Tracked / watched Jupiter owners by `core/selection.pick`. The grade score is stored in `count_score`."""
+async def pick_owners(*, now: float | None = None, graded: int = 0, shadow_db: str | None = None) -> int:
+    """Tracked / watched Jupiter owners by `core/selection.pick`. The grade score is stored in `count_score`.
+
+    `shadow_db` = the trader's file (the scout reads it read-only; None = this program's own file). When it cannot be
+    read the pick FAILS CLOSED: the flags and `jup:picked_at` stay as they are (ShadowUnreadable), so the trader sees
+    an aging list instead of one that re-tracks wallets whose shadow copies lose."""
     at = time.time() if now is None else now
-    shadows = await shadow.stats(now=at)
+    try:
+        shadows = await crossread.shadow_stats(shadow_db, read_only=shadow_db is not None, now=at)
+    except Exception as exc:  # noqa: BLE001 — any read failure: keep the old pick
+        raise ShadowUnreadable(f"shadow record unreadable ({type(exc).__name__}); the pick is kept") from exc
     async with store.session() as conn:
         async with conn.execute(
             "SELECT address, tier, count_score FROM wallets WHERE source = ? AND graded_at >= ?",
@@ -340,6 +363,7 @@ async def pick_owners(*, now: float | None = None, graded: int = 0) -> int:
             await conn.execute("UPDATE wallets SET tracked = 1 WHERE address = ?", (owner,))
         for owner in watched:
             await conn.execute("UPDATE wallets SET watched = 1 WHERE address = ?", (owner,))
+        await meta.put(conn, PICKED_AT_KEY, at, now=at)  # with the flags: the trader ages the list by this
     if graded:
         logger.info("jupiter: graded %d owners, tracking %d, watching %d", graded, len(tracked), len(watched))
     return len(tracked)

@@ -25,7 +25,11 @@ Checks:
 - old-secret-name : no code, script or Terraform names the deleted shared secret (user, 2026-11-16: each bot has its
                    own secret now, solana-future-bot here); docs may mention it as history
 - host-guards    : the box keeps two guards (2026-11-16): the update timer retries a FAILED bot start, and the host
-                   sync re-runs hostSetup.sh while sshd is not masked (DEBUG D-7)
+                   sync re-runs hostSetup.sh while sshd is not masked (DEBUG D-7); and since D-30 hostSetup.sh backs
+                   up and restores BOTH database files (the trader's and the scout's)
+- compose        : docker-compose.yml starts each program with `entrypoint:` and never uses `command:`, and the image
+                   has no ENTRYPOINT (LESSON L-14: a compose command is APPENDED to an image ENTRYPOINT, so the old
+                   image would have run the whole old bot twice)
 """
 
 import gzip
@@ -213,7 +217,13 @@ def check_old_secret(text: str, name: str) -> list[str]:
 
 
 HOST_GUARDS = {
-    "hostSetup.sh": ["systemctl is-failed --quiet solana-future-coin", '--secret-id "solana-future-bot"'],
+    "hostSetup.sh": [
+        "systemctl is-failed --quiet solana-future-coin",
+        '--secret-id "solana-future-bot"',
+        "for NAME in solana-future-coin.db scout.db; do",  # D-30: both files
+        'OUT="$(aws s3 cp "s3://${BUCKET}/live/${NAME}" "${DB}.restore"',  # restore, per file
+        'aws s3 cp "${OUT}" "s3://${BUCKET}/live/${NAME}"',  # backup, per file
+    ],
     "infra/user_data.sh": [
         "systemctl is-enabled sshd 2>/dev/null | grep -q masked || RERUN=1",
         '--secret-id "solana-future-bot"',
@@ -228,6 +238,22 @@ def check_host_guards(texts: dict[str, str]) -> list[str]:
         for needle in needles
         if needle not in texts.get(name, "")
     ]
+
+
+PROGRAMS = ("app.scout", "app.trader")
+
+
+def check_compose(compose: str, dockerfile: str) -> list[str]:
+    """LESSON L-14: each program by `entrypoint:` (never `command:`), and no image ENTRYPOINT."""
+    errors = []
+    if re.search(r"^\s+command:", compose, re.M):
+        errors.append("compose: docker-compose.yml uses `command:`; use `entrypoint:` (LESSON L-14)")
+    for program in PROGRAMS:
+        if compose.count(f'entrypoint: ["python", "-m", "{program}"]') != 1:
+            errors.append(f"compose: docker-compose.yml must start {program} exactly once with `entrypoint:`")
+    if re.search(r"^ENTRYPOINT", dockerfile, re.M):
+        errors.append("compose: app/Dockerfile has an ENTRYPOINT; use CMD so compose's `entrypoint:` decides")
+    return errors
 
 
 def case_addresses() -> set[str]:
@@ -315,6 +341,7 @@ def run() -> int:
     ev = ROOT / "scripts" / "collect_evidence.sh"
     errors += check_evidence_read_only(ev.read_text(), "scripts/collect_evidence.sh")
     errors += check_host_guards({n: (ROOT / n).read_text() for n in HOST_GUARDS})
+    errors += check_compose((ROOT / "docker-compose.yml").read_text(), (ROOT / "app" / "Dockerfile").read_text())
     for p in files():
         if p.suffix in CODE_SUFFIXES and p.name != "checks.py":
             errors += check_old_secret(p.read_text(errors="ignore"), str(p.relative_to(ROOT)))
@@ -372,6 +399,15 @@ def self_test() -> int:
         missed.append("old-secret-name")
     if len(check_host_guards({})) != sum(len(v) for v in HOST_GUARDS.values()):
         missed.append("host-guards")
+    good = 'entrypoint: ["python", "-m", "app.scout"]\nentrypoint: ["python", "-m", "app.trader"]\n'
+    if check_compose(good, 'CMD ["python", "-m", "app.trader"]\n'):
+        missed.append("compose (a good file refused)")
+    if not check_compose(good + "    command: [\"x\"]\n", ""):
+        missed.append("compose (command:)")
+    if not check_compose('entrypoint: ["python", "-m", "app.scout"]\n', ""):
+        missed.append("compose (a program missing)")
+    if not check_compose(good, 'ENTRYPOINT ["python", "-m", "app.main"]\n'):
+        missed.append("compose (image ENTRYPOINT)")
     if "app/data/kucoin.py" in source_paths() and not _caught_with_pattern(
         "data/", "app/data/kucoin.py"
     ):

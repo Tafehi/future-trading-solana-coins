@@ -44,6 +44,11 @@ JUPITER_HISTORY_CALLS_PER_DAY = 20000  # Chainstack calls a day, now for the cha
 JUPITER_MIN_EPISODES = 8       # D-29: was 15; below JUPITER_FULL_PROOF_EPISODES the needed PF grows (jobs/jupiter.proof)
 JUPITER_MIN_RECORD_DAYS = 1.0  # D-29: was 14; the API gives every owner 90 days of record on its first read
 
+# ── Trader feed (2026-11-19, D-30: scout + trader, the Solana websocket) ─────────────────────────────
+SOLANA_WS_MAX_SUBSCRIPTIONS = 100  # one programSubscribe per copy-list owner; above it the 30-s poll alone
+FEED_POLL_SECONDS = 30.0       # the safety-net poll (getMultipleAccounts on the listed owners' known accounts)
+COPYLIST_MAX_AGE_S = 600.0     # the scout's pick older than this -> new opens refused LIST_STALE; exits continue
+
 # ── Telegram ─────────────────────────────────────────────────────────────────────────────────────
 BOT_NAME = "Jupiter-KuCoin"    # both bots post to one chat (split 2026-11-14): "[PAPER] Jupiter-KuCoin"
 DIGEST_MINUTES = 45            # user, 2026-11-16: a report every 45 min (was 15, trades only)

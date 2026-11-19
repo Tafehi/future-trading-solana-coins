@@ -14,7 +14,7 @@ The same pattern as the KuCoin bot (`future-trading-kucoins`), with its own name
 | Network | aws-foundation's shared VPC `vpc-06f42723ee12cfa5b`, public subnets a/c/b (deploy tries them in turn) |
 | Role | `solana-future-coin-role` (boundary `gha-workload-boundary`): SSM core, ECR pull, read `solana-future-bot` (exact name + 6 random chars), own bucket, PutObject `bigdata-shared-history-<acct>/futures/*` |
 | ECR | `solana-future-coin` (`:latest` + `:sha-<commit>`, keep 10) |
-| Bucket | `solana-future-coin-data-<acct>`: `live/` `daily/` backups, `host/` scripts, `diag/` evidence (30 days) |
+| Bucket | `solana-future-coin-data-<acct>`: `live/` `daily/` backups (both files since D-30: `live/solana-future-coin.db` + `live/scout.db`, `daily/<date>.db` + `daily/<date>-scout.db`), `host/` scripts, `diag/` evidence (30 days) |
 | State | `terraform-state-267850879774/future-trading-solana-coins/terraform.tfstate` (lockfile) |
 
 ## Before the FIRST deploy (user, in this order)
@@ -42,6 +42,25 @@ The same pattern as the KuCoin bot (`future-trading-kucoins`), with its own name
 sync 5 min, image update 5 min (restart only on a new image id), SQLite backup hourly :17, spool upload 15 min,
 status check daily 06:23 UTC. SSM Session Manager is the only way in; sshd is masked once SSM is proven.
 Rollback: retag an older `sha-` image as `latest` in ECR.
+
+## Two containers from one image (D-30)
+
+- `docker-compose.yml` runs `scout` (`solana-future-coin-scout`, `entrypoint: python -m app.scout`, 127.0.0.1:8080,
+  mem 450m) and `trader` (`solana-future-coin-trader`, `entrypoint: python -m app.trader`, 127.0.0.1:8081, mem 300m),
+  each with its own `LOG_DIR` and `HEALTH_URL`, `stop_grace_period: 30s`, the same `.env`, the same `data/` volume.
+  The systemd unit keeps its name (`solana-future-coin`) and runs `docker-compose up -d --remove-orphans`, which removes
+  the old single `solana-future-coin` container on the first start.
+- **`entrypoint:`, never `command:`** (LESSON L-14): a compose `command:` is appended to the image's ENTRYPOINT. The
+  image therefore has only `CMD ["python", "-m", "app.trader"]`. `scripts/checks.py compose` refuses a `command:` or
+  an image ENTRYPOINT.
+- **One-push rollout** (both orders are safe): the box gets the new compose (host sync, 5 min) and the new image
+  (update timer, 5 min) separately. New compose + old image: `python -m app.scout` fails ("No module named"), so
+  nothing trades for up to 10 minutes; never two old bots. New image + old compose: the trader runs alone with no
+  copy list and refuses every open (LIST_STALE) until the compose arrives. Expected: up to a 10-minute pause, then
+  about 20 minutes until the scout's first full copy list: it copies the single bot's owner list once from the trader's
+  file (`seed:owners_from_trader` in `meta`) and reads every owner's past again from the API.
+- **Rollback across D-30** needs both: the old image tag in ECR AND the old `docker-compose.yml` (revert the commit and
+  push, so Terraform uploads it). The old image with the new compose does not start (see above), by design.
 
 ## Never
 

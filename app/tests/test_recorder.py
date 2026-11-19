@@ -34,9 +34,10 @@ def test_flush_writes_the_shared_bucket_layout(tmp_path: Path) -> None:
     assert r.buffers["jupiter/positions"] == []
 
 
-def test_main_records_into_the_solana_bot_folders_only() -> None:
-    """D-19: this bot's rows never land in the KuCoin bot's folders, and it records no KuCoin market data."""
-    src = (Path(__file__).parents[1] / "main.py").read_text()
+def test_programs_record_into_the_solana_bot_folders_only() -> None:
+    """D-19: this bot's rows never land in the KuCoin bot's folders, and it records no KuCoin market data. Since D-30
+    the scout records the grades, the trader its positions and shadow copies."""
+    src = "".join((Path(__file__).parents[1] / f).read_text() for f in ("scout.py", "trader.py"))
     for dataset in ("solana-bot/grades", "solana-bot/positions", "solana-bot/shadow"):
         assert f'add_rows("{dataset}"' in src
     for foreign in ('add_rows("grades"', 'add_rows("bot/', "add_contracts", "add_book"):

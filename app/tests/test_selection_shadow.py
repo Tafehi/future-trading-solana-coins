@@ -8,7 +8,7 @@ from app.core import wallet_grader as wg
 from app.core.selection import Candidate
 from app.data.market import MarketCache
 from app.db import store
-from app.tests.helpers import FakeKucoin, book, contract
+from app.tests.helpers import FakeKucoin, TableCopyList, book, contract
 from app.trading import futures_paper as fp
 from app.trading import ledger, shadow
 from app.trading.copier import Copier
@@ -86,7 +86,7 @@ def _copier() -> tuple[FakeKucoin, MarketCache, Copier]:
     kf = FakeKucoin(books={"ETHUSDTM": book(2000.0)}, marks={"ETHUSDTM": 2000.0})
     market = MarketCache()
     market.load([contract()])
-    return kf, market, Copier(kf, market, PaperExecutor(kf, delay_s=0))  # type: ignore[arg-type]
+    return kf, market, Copier(kf, market, PaperExecutor(kf, delay_s=0), TableCopyList())  # type: ignore[arg-type]
 
 
 async def _rows(sql: str, args: tuple[object, ...] = ()) -> list[dict[str, object]]:

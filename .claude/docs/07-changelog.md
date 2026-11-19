@@ -228,3 +228,34 @@ repo became `future-trading-kucoins` (Hyperliquid -> KuCoin); this one is `futur
 - Tests: `test_jupiter_api.py` (16, real anonymised API answer `fixtures/jupiter_api_trades.json`),
   `test_more_wallets_pass.py` (18); 24 mutants. Open: B-26 (the API is not in the docs).
 
+
+## 2026-11-19 — Two programs: SCOUT + TRADER, and a Solana websocket feed (D-30)
+
+- **Why (user, 2026-11-18):** "since the speed is also important is it better if we switch to two seperate bots the
+  same as /Users/tafehi/rcm/github/hyperliquid-trading-bot one for tracking and tracing and sorting the wallets and
+  the second one for trading"; chose "Split + websocket". With the 60-s poll a copy came about 30 s after the trader's
+  fill; the websocket delivers the change 1.3 s p50 / 1.9 s max after it (measured 2026-11-18).
+- **What:** `app/main.py` became `app/scout.py` (feed, history, grade as its own loop, recorder; writes
+  `data/scout.db`; no trading or Telegram code loaded) and `app/trader.py` (websocket + 30-s poll -> one worker ->
+  `trading/watch.decide()` -> signals once -> copier woken at once; exits, ledger, Telegram, kill switch; writes
+  `data/solana-future-coin.db`). Shared: `app/runtime.py`. Cross reads only in `app/db/crossread.py`, read-only.
+  New: `data/solana_ws.py`, `trading/copylist.py` (LIST_STALE), migration V4 (`feed_positions`; signals know their
+  account, open time and feed, with a unique index). The scout writes no signals; its pick writes `jup:picked_at` and
+  fails closed without the shadow record. /health per program (8080 / 8081). Tools read-only (`wallets_report` both
+  files; `evidence_report --scout-db`).
+- **Host:** two compose services with `entrypoint:` (LESSON L-14), the image has only `CMD`; backup and restore of
+  both files; `statusCheck.sh` checks both containers, the old one gone, both healths, subscriptions vs wanted, the
+  copy delay and both backups. `scripts/checks.py`: new `compose` check, `host-guards` for both files (both red on
+  the old files).
+- **Tests on that day:** 370 passed; new `test_programs.py`, `test_position_feed.py`, `test_solana_ws.py`,
+  `test_copylist.py`, rewritten `test_health.py`; every boundary at its value. Mutants: the `main.py` ones moved, 38
+  new; two survived at first and showed weak tests (LESSON L-15), both fixed. `./precommit.sh` prints the totals.
+- **Open:** B-27 (Chainstack websocket limits unverified), B-28 (old scout tables left in the trader's file), B-29
+  (a new account opened during a restart), B-30 (migrations not atomic); B-16 now covers two processes.
+- **Rollout:** one push; up to a 10-minute pause while the box picks up the compose file and the image, then about
+  20 minutes until the scout's first full copy list (doc 04).
+- **Owner seed (found before the push, from the box's numbers: 1,331 owners, 74 GOLD, 23 SILVER):** a fresh
+  `scout.db` would know only the owners whose accounts change in the current block, and Jupiter's trade API cannot list
+  owners, so the pool would have shrunk for about a day. `jobs/jupiter.seed_owners` copies the owner list once from
+  the trader's file (read-only; an owner the feed already saw keeps the earlier first-seen and the larger size) and
+  the API reads every past again, biggest first. 3 tests, 4 mutants.

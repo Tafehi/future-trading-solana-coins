@@ -7,29 +7,24 @@
   contracts' MARK prices from the market cache (refreshed every COLD_LOOP_SECONDS, so no extra KuCoin calls; a stop can
   fire up to a minute late — the same for every wallet, so the ranking stays fair). Exit at the mark.
 - Return = the price move in our favour, in %, minus two taker fees; a liquidation = -100/LEVERAGE (the margin).
-- `stats`: per wallet, closed shadow copies in SHADOW_WINDOW_DAYS and their mean return; read by `core/selection`.
+- `stats`: per wallet, closed shadow copies in SHADOW_WINDOW_DAYS and their mean return. It lives in
+  `app/db/crossread.py` since D-30 (the scout reads it from the trader's file without importing trading code);
+  `stats` here is the trader's own read of its own file.
 """
 
 import time
-from dataclasses import dataclass
 
 import aiosqlite
 
 from app.config import settings
 from app.data.kucoin import Contract, OrderBook
 from app.data.market import MarketCache
-from app.db import store
+from app.db import crossread, store
+from app.db.crossread import ShadowStats
 from app.trading import futures_paper as fp
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
-
-
-@dataclass(frozen=True)
-class ShadowStats:
-    n: int
-    mean: float | None
-    wins: int
 
 
 def net_return_pct(side: str, entry: float, exit_px: float, taker_fee: float, reason: str) -> float:
@@ -102,16 +97,4 @@ async def mark_and_exit(market: MarketCache, *, now: float | None = None) -> int
 
 
 async def stats(*, now: float | None = None) -> dict[str, ShadowStats]:
-    at = time.time() if now is None else now
-    since = at - settings.shadow_window_days * 86400
-    async with store.session() as conn:
-        async with conn.execute(
-            "SELECT wallet, COUNT(*) AS n, AVG(ret_pct) AS mean, SUM(CASE WHEN ret_pct > 0 THEN 1 ELSE 0 END) AS wins "
-            "FROM shadow_positions WHERE status = 'CLOSED' AND closed_at >= ? GROUP BY wallet",
-            (since,),
-        ) as cur:
-            return {
-                str(r["wallet"]): ShadowStats(int(r["n"]), float(r["mean"]) if r["mean"] is not None else None,
-                                              int(r["wins"] or 0))
-                for r in await cur.fetchall()
-            }  # fmt: skip
+    return await crossread.shadow_stats(now=now)

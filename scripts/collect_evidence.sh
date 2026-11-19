@@ -15,8 +15,8 @@
 #   DAYS=7 ./scripts/collect_evidence.sh        # recorded Parquet of the last 7 days (default 3)
 #
 # What it downloads:
-#   live/<db>              the hourly database backup: Jupiter owners, episodes, grades, signals, positions, shadow
-#                          copies, ledger
+#   live/<db>              the hourly backup of the TRADER's file: signals, positions, shadow copies, ledger, feed
+#   live/scout.db          the hourly backup of the SCOUT's file (D-30): Jupiter owners, episodes, grades, picks
 #   daily/ listing         which daily backups exist
 #   diag/                  the NEWEST evidence-*.tgz from step 1 (container log, journal, app logs), unpacked
 #   futures/ (shared)      the listing, and the last DAYS days of solana-bot/{grades,positions,shadow}. Not
@@ -77,6 +77,13 @@ say "database backup s3://$DATA/$DB_KEY"
 run "$OUT/listing/bucket.txt" "$AWS" s3 ls "s3://$DATA/" --recursive --region "$REGION"
 DB="$OUT/bucket/$(basename "$DB_KEY")"
 run "$OUT/listing/db-copy.txt" "$AWS" s3 cp "s3://$DATA/$DB_KEY" "$DB" --region "$REGION" --only-show-errors
+# D-30: the wallet pool is in the scout's own file. A backup from before the split into two programs has none.
+SCOUT_DB=""
+if [ "${LEGACY:-0}" != 1 ] && grep -q ' live/scout\.db$' "$OUT/listing/bucket.txt" 2>/dev/null; then
+  SCOUT_DB="$OUT/bucket/scout.db"
+  run "$OUT/listing/scout-db-copy.txt" "$AWS" s3 cp "s3://$DATA/live/scout.db" "$SCOUT_DB" --region "$REGION" \
+    --only-show-errors || SCOUT_DB=""
+fi
 
 say "newest box evidence (statusCheck.sh --evidence)"
 NEWEST="$(awk '$4 ~ /^diag\/evidence-.*\.tgz$/ {print $4}' "$OUT/listing/bucket.txt" 2>/dev/null | sort | tail -1)"
@@ -101,13 +108,20 @@ done
 
 say "offline analysis (no AWS)"
 if [ -s "$DB" ] && [ -x "$PY" ]; then
-  run "$OUT/analysis/evidence_report.txt" "$PY" -m app.tools.evidence_report --db "$DB" --out "$OUT/analysis"
+  if [ -s "$SCOUT_DB" ]; then
+    run "$OUT/analysis/evidence_report.txt" "$PY" -m app.tools.evidence_report --db "$DB" --scout-db "$SCOUT_DB" \
+      --out "$OUT/analysis"
+  else
+    run "$OUT/analysis/evidence_report.txt" "$PY" -m app.tools.evidence_report --db "$DB" --out "$OUT/analysis"
+  fi
   ACCOUNTS="$("$PY" -c "import sqlite3,sys;c=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True);print(' '.join(r[0] for r in c.execute('SELECT DISTINCT account FROM positions')))" "$DB" 2>/dev/null)"
   for A in $ACCOUNTS; do
     run "$OUT/analysis/trade_log-$A.txt" "$PY" -m app.tools.trade_log --db "$DB" --account "$A" --limit 500
     "$PY" -m app.tools.golive_check --db "$DB" --account "$A" >"$OUT/analysis/golive-$A.txt" 2>&1 || true
   done
-  run "$OUT/analysis/wallets_report.txt" "$PY" -m app.tools.wallets_report --db "$DB"
+  # One file before D-30 (the pool and the shadow copies both in it), two after.
+  run "$OUT/analysis/wallets_report.txt" "$PY" -m app.tools.wallets_report --scout-db "${SCOUT_DB:-$DB}" \
+    --trader-db "$DB"
 else
   echo "   skipped: no database downloaded, or no $PY (python3.12 -m venv .venv && .venv/bin/pip install -r app/requirements-dev.txt)"
   FAILED+=("analysis")
@@ -118,7 +132,7 @@ fi
   echo
   echo "- Bucket: \`$DATA\` (database \`$DB_KEY\`)$([ "${LEGACY:-0}" = 1 ] && echo ' — LEGACY futcoins box')"
   echo "- Hand this folder to the assistant: \`$OUT\`"
-  echo "- Start with \`analysis/summary.md\`, then \`analysis/tables/wallets.csv\` and \`analysis/tables/positions.csv\`."
+  echo "- Start with \`analysis/summary.md\`, then \`analysis/tables/scout-wallets.csv\` (the pool; \`wallets.csv\` in a backup from before D-30) and \`analysis/tables/positions.csv\`."
   echo "- Box logs: \`diag/\` ($([ -n "$NEWEST" ] && echo "$NEWEST" || echo 'none: run statusCheck.sh --evidence'))"
   echo
   echo "## Failed steps"

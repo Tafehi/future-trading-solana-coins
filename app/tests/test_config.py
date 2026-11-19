@@ -95,7 +95,7 @@ def test_settings_file_loads_and_is_paper(monkeypatch: pytest.MonkeyPatch) -> No
     assert s.bot_name == "Jupiter-KuCoin"
 
 
-def test_main_uses_the_wallet_list_intervals() -> None:
-    """The wallet-list job reads its cadence from settings, not a hard-coded hour."""
-    src = (Path(DEFAULT_SETTINGS_FILE).parent / "main.py").read_text()
+def test_scout_uses_the_wallet_list_intervals() -> None:
+    """The wallet-list job reads its cadence from settings, not a hard-coded hour (the scout grades since D-30)."""
+    src = (Path(DEFAULT_SETTINGS_FILE).parent / "scout.py").read_text()
     assert 'claim("jupiter_grade", interval_s=settings.jupiter_grade_minutes * 60)' in src

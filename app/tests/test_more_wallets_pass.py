@@ -222,11 +222,11 @@ def test_unknown_history_source_refuses(monkeypatch: pytest.MonkeyPatch) -> None
         Settings()
 
 
-def test_main_hands_the_api_to_the_history_job() -> None:
+def test_scout_hands_the_api_to_the_history_job() -> None:
     from pathlib import Path
 
-    main = (Path(__file__).resolve().parents[1] / "main.py").read_text()
-    assert "jupiter_history.step(self.solana, deadline=time.time() + 50, api=self.jup_api)" in main
+    scout = (Path(__file__).resolve().parents[1] / "scout.py").read_text()
+    assert "jupiter_history.step(self.solana, deadline=time.time() + 50, api=self.jup_api)" in scout
 
 
 async def test_migration_3_queues_the_chain_read_owners_for_the_api(tmp_path: Any) -> None:
@@ -241,7 +241,7 @@ async def test_migration_3_queues_the_chain_read_owners_for_the_api(tmp_path: An
         await conn.execute(
             "INSERT INTO jup_owners (owner, first_seen, backfilled_at, max_open_usd) VALUES ('C', 1, 5, 9e4)"
         )
-    assert await migrations.migrate(path) == 3
+    assert await migrations.migrate(path) == migrations.SCHEMA_VERSION  # 3 and every later one (D-30: 4)
     async with store.session(path) as conn:
         async with conn.execute("SELECT backfilled_at FROM jup_owners WHERE owner = 'C'") as cur:
             row = await cur.fetchone()

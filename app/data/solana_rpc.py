@@ -98,6 +98,21 @@ class SolanaRpc:
             [signature, {"encoding": "json", "maxSupportedTransactionVersion": 1, "commitment": "confirmed"}],
         )
 
+    async def positions_at(self, pubkeys: list[str]) -> tuple[int, dict[str, jp.JupPosition | None]]:
+        """Like `positions`, plus the slot the answer was read at (the trader orders feed observations by it)."""
+        slot = 0
+        out: dict[str, jp.JupPosition | None] = {}
+        for i in range(0, len(pubkeys), jp.MAX_MULTIPLE):
+            chunk = pubkeys[i : i + jp.MAX_MULTIPLE]
+            body = await self._post(jp.multiple_request(chunk), "getMultipleAccounts")
+            try:
+                out.update(jp.parse_multiple(body, chunk))  # raises unless body is {"result": {...}}
+                ctx = (body["result"] or {}).get("context") or {}  # type: ignore[index]
+                slot = max(slot, int(ctx.get("slot") or 0))
+            except (ValueError, TypeError) as exc:
+                raise DataError(str(exc)) from exc
+        return slot, out
+
     async def positions(self, pubkeys: list[str]) -> dict[str, jp.JupPosition | None]:
         out: dict[str, jp.JupPosition | None] = {}
         for i in range(0, len(pubkeys), jp.MAX_MULTIPLE):

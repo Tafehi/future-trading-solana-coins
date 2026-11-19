@@ -46,4 +46,13 @@ L-1 to L-10 come from the copy-trading bot (removed 2026-11-17, D-26); they stay
   ... if needed", which picked none of the options. The removal went ahead on the widest reading, and the user ran
   the destroy. They had meant the old wallet-selection method. The bot was restored the next day, but the box's
   database and backups were gone for good. A deletion that is hard to undo needs an answer that names it.
-
+- **L-14 — A compose `command:` is APPENDED to the image's ENTRYPOINT.** The image had
+  `ENTRYPOINT ["python", "-m", "app.main"]`. Two services with `command: ["python", "-m", "app.scout"]` and
+  `["python", "-m", "app.trader"]` would both have run `python -m app.main python -m app.scout`: the whole old bot,
+  twice, on one paper account. Found in the plan review for D-30, before it shipped. Pick the program with
+  `entrypoint:` in compose and keep only `CMD` in the image; `scripts/checks.py compose` enforces both.
+- **L-15 — A surviving mutant can mean the TEST is weak, not the code.** Two D-30 mutants survived. (1) The
+  same-file check compares normalised paths, but the test built its "different-looking" path with `pathlib`, which
+  drops the `/./` by itself, so normalisation was never exercised: build such inputs as plain strings. (2) The
+  websocket cleared its subscription state in two places, so removing one changed nothing: keep one owner of each
+  invariant, so that losing it shows.

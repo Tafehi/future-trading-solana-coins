@@ -227,7 +227,7 @@ def test_the_tool_imports_with_no_settings_or_secrets() -> None:
 def test_the_bot_does_not_import_the_tracer() -> None:
     """Until the user decides how the tracer feeds wallet selection (PLAN phase 6), the bot's loops and its Chainstack
     budget cannot be touched by the tracer: importing the bot loads no tracer module."""
-    code = "import sys, app.main; print(any(m.startswith('app.tools.wallet_trace') for m in sys.modules))"
+    code = "import sys, app.scout, app.trader; print(any(m.startswith('app.tools.wallet_trace') for m in sys.modules))"
     env = {"SETTINGS_FILE": "unset", "MODE": "paper", "PATH": "/usr/bin:/bin"}
     argv = [sys.executable, "-c", code]
     out = subprocess.run(argv, cwd=REPO, env=env, capture_output=True, text=True, timeout=60)  # noqa: S603
@@ -236,8 +236,8 @@ def test_the_bot_does_not_import_the_tracer() -> None:
 
 
 def test_no_bot_module_names_the_tracer() -> None:
-    bot = ["app/main.py", "app/jobs", "app/trading", "app/core", "app/data", "app/notifications", "app/record",
-           "app/db", "app/api"]  # fmt: skip
+    bot = ["app/scout.py", "app/trader.py", "app/runtime.py", "app/jobs", "app/trading", "app/core", "app/data",
+           "app/notifications", "app/record", "app/db", "app/api"]  # fmt: skip
     hits = [str(p.relative_to(REPO)) for d in bot
             for p in ([REPO / d] if d.endswith(".py") else (REPO / d).rglob("*.py"))
             if "wallet_trace" in p.read_text()]  # fmt: skip

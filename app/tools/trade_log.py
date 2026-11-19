@@ -16,7 +16,8 @@ def _t(ts: float | None) -> str:
 
 
 async def run(db: str | None, account: str, limit: int) -> None:
-    async with store.session(db) as conn:
+    # The trader's file (positions and the account live there since D-30), opened read-only: never created.
+    async with store.session(db or settings.trader_db_path, read_only=True) as conn:
         async with conn.execute(
             "SELECT * FROM positions WHERE account = ? ORDER BY id DESC LIMIT ?", (account, limit)
         ) as cur:

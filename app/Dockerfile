@@ -34,9 +34,13 @@ RUN rm -rf /app/app/tests \
     && mkdir -p /app/data /app/logs \
     && chown -R 1000:1000 /app/data /app/logs
 USER 1000:1000
-EXPOSE 8080
+# One image, two programs (D-30): the scout's /health on 8080, the trader's on 8081.
+EXPOSE 8080 8081
 # /health fails when a loop goes quiet, not only when the process dies. 120 s start: migrations + first market load.
+# HEALTH_URL is set per service in docker-compose.yml; the default is the trader's.
 HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
-    CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=8).status == 200 else 1)"]
-# Exec form: SIGTERM reaches Python, which flushes the recorder and stops the loops cleanly.
-ENTRYPOINT ["python", "-m", "app.main"]
+    CMD ["python", "-c", "import os,urllib.request,sys; sys.exit(0 if urllib.request.urlopen(os.environ.get('HEALTH_URL', 'http://127.0.0.1:8081/health'), timeout=8).status == 200 else 1)"]
+# CMD, never ENTRYPOINT (LESSON L-14): docker-compose picks the program with `entrypoint:`. A compose `command:` is
+# APPENDED to an image ENTRYPOINT as arguments, so with the old `ENTRYPOINT app.main` both services would have run the
+# whole old bot twice. Exec form: SIGTERM reaches Python, which flushes the recorder and stops the loops cleanly.
+CMD ["python", "-m", "app.trader"]

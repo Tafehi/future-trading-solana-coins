@@ -2,7 +2,11 @@
 
 A futures copy-trading bot ("solana-future-coin"). It grades public traders on Jupiter Perps (Solana) and copies their trades onto
 KuCoin USDT-M perpetual futures, with its own exits. It runs in paper mode first, with paper treated exactly like real
-money, and reports to Telegram every 15 minutes when it traded (stamped `[PAPER] Jupiter-KuCoin`).
+money, and reports to Telegram every 45 minutes (stamped `[PAPER] Jupiter-KuCoin`).
+
+Two programs from one image (D-30): the **scout** (`python -m app.scout`) finds, grades and picks wallets; the
+**trader** (`python -m app.trader`) follows the picked wallets on a Solana websocket, copies their opens about 3 s
+later, and runs the exits, the ledger and Telegram.
 
 Split on 2026-11-14 from `future-trading-coins`, which is now `future-trading-kucoins` (the Hyperliquid -> KuCoin
 bot). Each bot has its own EC2 box and its own secret (`solana-future-bot` here).

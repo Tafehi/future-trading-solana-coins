@@ -10,7 +10,7 @@ from app.core import wallet_grader as wg
 from app.data.market import MarketCache
 from app.db import meta, store
 from app.notifications import digest, messages
-from app.tests.helpers import FakeKucoin, FakeNotifier, book, contract
+from app.tests.helpers import FakeKucoin, FakeNotifier, TableCopyList, book, contract
 from app.trading import futures_paper as fp
 from app.trading import ledger, risk
 from app.trading.copier import Copier, stop_price
@@ -45,7 +45,7 @@ def setup(mid: float = 2000.0) -> tuple[FakeKucoin, MarketCache, Copier]:
     market = MarketCache()
     market.load([contract(mark=mid)])
     ex = PaperExecutor(kf, delay_s=0)  # type: ignore[arg-type]
-    return kf, market, Copier(kf, market, ex)  # type: ignore[arg-type]
+    return kf, market, Copier(kf, market, ex, TableCopyList())  # type: ignore[arg-type]
 
 
 async def signal_row(sid: int) -> dict[str, Any]:

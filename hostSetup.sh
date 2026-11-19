@@ -5,8 +5,9 @@
 #
 #   1. 1 GB swap (t4g.micro has 1 GB of RAM)
 #   2. directories and ownership (uid 1000 = the container user)
-#   3. solana-future-coin-restore   : before the bot starts, fetch the newest backup if there is no local database
-#   4. solana-future-coin-backup    : hourly SQLite backup to s3://solana-future-coin-data-<acct>/live/ and daily/
+#   3. solana-future-coin-restore   : before the bot starts, fetch the newest backup of each missing database file
+#   4. solana-future-coin-backup    : hourly SQLite backup of both files to s3://solana-future-coin-data-<acct>/live/
+#                                     and daily/ (D-30: the trader's solana-future-coin.db and the scout's scout.db)
 #   5. solana-future-coin-spool     : every 15 min, move finished Parquet files to s3://bigdata-shared-history-<acct>/futures/
 #   6. solana-future-coin-update    : every 5 min, pull :latest and restart only if the image changed
 #   7. mask sshd, but only after proving the SSM agent runs (SSM is the only way in)
@@ -55,52 +56,69 @@ if ! swapon --show | grep -q /swapfile; then
 fi
 
 # ── 2. directories ─────────────────────────────────────────────────────────────────────────────────
-mkdir -p "${BOT_DIR}/data/spool" "${BOT_DIR}/logs/scripts" "${BOT_DIR}/logs/app" "${BOT_DIR}/backup"
+# logs/app/scout and logs/app/trader: one app.log per program (D-30), both on the same bind mount.
+mkdir -p "${BOT_DIR}/data/spool" "${BOT_DIR}/logs/scripts" "${BOT_DIR}/logs/app/scout" "${BOT_DIR}/logs/app/trader" \
+  "${BOT_DIR}/backup"
 chown -R 1000:1000 "${BOT_DIR}/data" "${BOT_DIR}/logs/app"
 
 # ── 3. restore ─────────────────────────────────────────────────────────────────────────────────────
 cat >/usr/local/bin/solana-future-coin-restore <<'EOF'
 #!/bin/bash
-# Before the bot starts: no local database -> fetch live/solana-future-coin.db. "Not found" is a fresh start (exit 0):
-# this bot is new (2026-11-14 split) and has no paper history to protect, so its first boot must start empty. (The
+# Before the programs start: each missing database file is fetched from live/<name>.db (D-30: the trader's
+# solana-future-coin.db and the scout's scout.db). "Not found" is a fresh start for that file: this bot has no paper
+# history to protect (2026-11-14 split), and a scout without its file copies the owner list from the trader's file
+# and reads every owner's past again (~20 min). (The
 # KuCoin bot WAITS instead, because it carries the old futcoins ledger; that repo's B-20.) Any other failure exits 1
-# and fails the unit on purpose: a bot that starts empty would back up an empty ledger over the good one an hour later.
+# and fails the unit on purpose: a program that starts empty would back up an empty file over the good one an hour
+# later.
 set -uo pipefail
-DB="/opt/solana-future-coin/data/solana-future-coin.db"
-[ -s "${DB}" ] && exit 0
+DATA="/opt/solana-future-coin/data"
 REGION="$(/usr/local/bin/solana-future-coin-region)"
 BUCKET="solana-future-coin-data-$(/usr/local/bin/solana-future-coin-account)" || exit 1
-OUT="$(aws s3 cp "s3://${BUCKET}/live/solana-future-coin.db" "${DB}.restore" --region "${REGION}" 2>&1)"
-if [ $? -eq 0 ]; then
-  mv "${DB}.restore" "${DB}" && chown 1000:1000 "${DB}" && echo "restored ${DB} from s3://${BUCKET}/live/"
-  exit 0
-fi
-rm -f "${DB}.restore"
-if echo "${OUT}" | grep -qE '404|Not Found|does not exist'; then
-  echo "no backup yet: fresh start"
-  exit 0
-fi
-echo "ERROR: restore failed and it is not a missing backup: ${OUT}"
-exit 1
+for NAME in solana-future-coin.db scout.db; do
+  DB="${DATA}/${NAME}"
+  [ -s "${DB}" ] && continue
+  OUT="$(aws s3 cp "s3://${BUCKET}/live/${NAME}" "${DB}.restore" --region "${REGION}" 2>&1)"
+  if [ $? -eq 0 ]; then
+    mv "${DB}.restore" "${DB}" && chown 1000:1000 "${DB}" && echo "restored ${DB} from s3://${BUCKET}/live/"
+    continue
+  fi
+  rm -f "${DB}.restore"
+  if echo "${OUT}" | grep -qE '404|Not Found|does not exist'; then
+    echo "no backup of ${NAME} yet: fresh start"
+    continue
+  fi
+  echo "ERROR: restore of ${NAME} failed and it is not a missing backup: ${OUT}"
+  exit 1
+done
+exit 0
 EOF
 chmod 755 /usr/local/bin/solana-future-coin-restore
 
 # ── 4. backup ──────────────────────────────────────────────────────────────────────────────────────
 cat >/usr/local/bin/solana-future-coin-backup <<'EOF'
 #!/bin/bash
-# The SQLite online backup API (sqlite3 .backup), so a backup taken while the bot writes is still consistent.
+# The SQLite online backup API (sqlite3 .backup), so a backup taken while a program writes is still consistent.
+# Both files (D-30): live/<name>.db, and daily/<date>.db (the trader's, the name it always had) / daily/<date>-scout.db.
+# `last-backup` moves only when every existing file was backed up.
 set -uo pipefail
-DB="/opt/solana-future-coin/data/solana-future-coin.db"
-[ -s "${DB}" ] || { echo "no database yet"; exit 0; }
+DATA="/opt/solana-future-coin/data"
 REGION="$(/usr/local/bin/solana-future-coin-region)"
 BUCKET="solana-future-coin-data-$(/usr/local/bin/solana-future-coin-account)" || exit 1
-OUT="/opt/solana-future-coin/backup/solana-future-coin.db"
-rm -f "${OUT}"
-sqlite3 "${DB}" ".backup '${OUT}'" || exit 1
-aws s3 cp "${OUT}" "s3://${BUCKET}/live/solana-future-coin.db" --region "${REGION}" --only-show-errors || exit 1
-aws s3 cp "${OUT}" "s3://${BUCKET}/daily/$(date -u +%F).db" --region "${REGION}" --only-show-errors || exit 1
-date -u +%s >/opt/solana-future-coin/logs/last-backup
-echo "backup done $(date -u +%FT%TZ)"
+DONE=0
+for NAME in solana-future-coin.db scout.db; do
+  DB="${DATA}/${NAME}"
+  [ -s "${DB}" ] || { echo "no ${NAME} yet"; continue; }
+  OUT="/opt/solana-future-coin/backup/${NAME}"
+  if [ "${NAME}" = scout.db ]; then DAILY="$(date -u +%F)-scout.db"; else DAILY="$(date -u +%F).db"; fi
+  rm -f "${OUT}"
+  sqlite3 "${DB}" ".backup '${OUT}'" || exit 1
+  aws s3 cp "${OUT}" "s3://${BUCKET}/live/${NAME}" --region "${REGION}" --only-show-errors || exit 1
+  aws s3 cp "${OUT}" "s3://${BUCKET}/daily/${DAILY}" --region "${REGION}" --only-show-errors || exit 1
+  DONE=$((DONE + 1))
+done
+[ "${DONE}" -gt 0 ] && date -u +%s >/opt/solana-future-coin/logs/last-backup
+echo "backup done $(date -u +%FT%TZ): ${DONE} file(s)"
 EOF
 chmod 755 /usr/local/bin/solana-future-coin-backup
 
@@ -166,7 +184,8 @@ EOF
 # ── 6. image update ────────────────────────────────────────────────────────────────────────────────
 cat >/usr/local/bin/solana-future-coin-update <<'EOF'
 #!/bin/bash
-# Pull :latest; restart the bot only when the image id changed. Rollback = retag an older sha- image as latest in ECR.
+# Pull :latest; restart both programs only when the image id changed. Rollback = retag an older sha- image as latest
+# in ECR (and, across D-30, the old docker-compose.yml with it: docs 04-deploy).
 set -uo pipefail
 REG="$(/usr/local/bin/solana-future-coin-ecr-registry)" || exit 1
 IMG="${REG}/solana-future-coin:latest"

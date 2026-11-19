@@ -1,8 +1,8 @@
 # CLAUDE.md — future-trading-solana-coins (the `solana-future-coin` bot + the wallet tracer)
 
 A futures copy-trading bot: it grades public traders on **Jupiter Perps (Solana)** and copies their opens onto
-**KuCoin USDT-M perpetuals**, with its own exits. Python 3.12, one container, its own t4g.micro in Frankfurt. Paper
-first; paper is treated exactly like real money. Next to it, a read-only **wallet tracer** (laptop tool, PLAN.md) that
+**KuCoin USDT-M perpetuals**, with its own exits. Python 3.12, two programs (SCOUT + TRADER, D-30) in two
+containers from one image, on its own t4g.micro in Frankfurt. Paper first; paper is treated exactly like real money. Next to it, a read-only **wallet tracer** (laptop tool, PLAN.md) that
 follows the money behind a wallet. Split on 2026-11-14 from `future-trading-coins` (now `future-trading-kucoins`).
 
 ## Docs — read the one you need
@@ -21,12 +21,16 @@ follows the money behind a wallet. Split on 2026-11-14 from `future-trading-coin
 | [PLAN.md](PLAN.md) | The tracer's brief; phases 0-5 built. Phase 6 (tracer -> wallet selection) is next (D-28) |
 | `BUG.md` / `DEBUG.md` / `LESSON.md` / `DECISIONS.md` | Open defects / symptom->cause->guard / lessons / decisions with "revisit when" |
 
-## Current state (2026-11-18)
+## Current state (2026-11-19)
 
-- **Bot restored (user, 2026-11-18, D-26 reversed):** the 2026-11-17 removal was a misreading ("remove the old bot"
-  meant the old way of FINDING wallets, not the bot). Code back from `7437aec`; the tracer kept. The AWS box, bucket
-  and ECR repo were destroyed on 2026-11-17; **this push rebuilds them** (CI `terraform apply`): new box, new IP,
-  empty database, fresh $10,000 paper account. B-1 closes when `statusCheck.sh` on the new box ends `ALL OK`.
+- **Two programs (D-30, user: "Split + websocket"), built, NOT pushed yet:** the SCOUT (`python -m app.scout`,
+  `solana-future-coin-scout`, /health 8080) finds, grades and picks, writes `data/scout.db`, never trades or sends
+  Telegram. The TRADER (`python -m app.trader`, `solana-future-coin-trader`, /health 8081) follows the picked wallets
+  on a Solana websocket (+ a 30-s poll), copies, exits, keeps the ledger, sends Telegram, writes
+  `data/solana-future-coin.db`. Copy delay: about 3 s instead of about 30 s. After the push: up to a 10-minute pause,
+  then about 20 minutes until the scout's first full copy list (doc 04). B-1 closes when `statusCheck.sh` ends
+  `ALL OK` with both containers; B-27 watches the websocket on Chainstack.
+- The box was rebuilt on 2026-11-18 (D-26 reversed, D-28): new IP, a fresh $10,000 paper account.
 - **Next (D-28, user):** change how wallets are found: start from Hyperliquid holder wallets (big PnL, $0 volume),
   follow the money back with the tracer to the hidden bot wallets, and copy what those bots trade. Not built yet.
 - **Mode:** paper, account `paper-1`, $10,000, 3x isolated, max 10 positions, 6% margin per full-weight trade.
@@ -36,7 +40,8 @@ follows the money behind a wallet. Split on 2026-11-14 from `future-trading-coin
 - **Wallet pool (D-29, 2026-11-18):** every recorded owner's past from Jupiter's free trade API (chain = fallback,
   20k Chainstack calls/day); graded from 8 episodes (stronger proof below 15, weight <= 3), re-graded daily; GOLD +
   SILVER (weight <= 3), shadow copies decide the order. Measured: 5 -> 30 passing of 317 live owners.
-- **Telegram:** the bot reports every 45 min, ALWAYS (`[PAPER] Jupiter-KuCoin`); the tracer sends one summary per run.
+- **Telegram:** the trader reports every 45 min, ALWAYS (`[PAPER] Jupiter-KuCoin`); the tracer sends one summary per
+  run. The scout sends nothing.
 - **Tracer:** `python -m app.tools.wallet_trace <addr> --chain hl|sol`; reads its secret with the user's AWS login.
 - Checks: `./precommit.sh` prints its own counts (tests, mutants); that output is the source of truth, not this file.
 
@@ -52,8 +57,8 @@ follows the money behind a wallet. Split on 2026-11-14 from `future-trading-coin
    balance and a passing pre-flight. Do not weaken `_live_needs_everything` or `live_preflight`. Not before B-3 closes.
 4. **Paper = live except the executor** (D-3). Any change to gates, sizing, exits or the ledger applies to both. Paper
    must keep refusing what KuCoin refuses (`executor.check_rules`) and filling on a fresh book.
-5. **Telegram (bot) sends only the 45-min report and alarms** (D-8, D-24); every bot message carries `BOT_NAME` (D-21).
-   The tracer's summary uses short addresses only.
+5. **Telegram (the trader) sends only the 45-min report and alarms** (D-8, D-24); every bot message carries
+   `BOT_NAME` (D-21). The scout never sends (tested). The tracer's summary uses short addresses only.
 6. **`./precommit.sh` must print ALL STAGES PASS before any commit, and `scripts/verify_clone.sh` before any push.**
 7. **Bug loop:** grep DEBUG.md / LESSON.md for the symptom first. Every fix ships a test that fails on the old code
    (add a mutant to `scripts/mutants.sh`). Test boundaries at the boundary value.
@@ -66,5 +71,8 @@ follows the money behind a wallet. Split on 2026-11-14 from `future-trading-coin
     log an RPC URL or the Telegram token.
 12. **Ask, don't assume** when a request is unclear — and ask AGAIN when an answer does not pick an option, before
     anything destructive (LESSON L-13).
+13. **Two programs, two files (D-30):** each program writes only its own SQLite file; every read of the other's file
+    goes through `app/db/crossread.py`, read-only. The scout loads no trading or Telegram code, the trader no grading
+    or history code (tested). Compose picks the program with `entrypoint:`, never `command:` (LESSON L-14; checked).
 
 Keep this file under 40,000 characters (target under 10,000; `scripts/checks.py` enforces the hard limit).

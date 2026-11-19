@@ -54,9 +54,9 @@ def _day_key(now: float) -> str:
     return f"jhist:calls:{datetime.fromtimestamp(now, UTC):%Y-%m-%d}"
 
 
-async def calls_today(*, now: float | None = None) -> int:
+async def calls_today(*, now: float | None = None, db_path: str | None = None, read_only: bool = False) -> int:
     at = time.time() if now is None else now
-    async with store.session() as conn:
+    async with store.session(db_path, read_only=read_only) as conn:
         got = await meta.get(conn, _day_key(at))
     return int(float(got[0])) if got else 0
 

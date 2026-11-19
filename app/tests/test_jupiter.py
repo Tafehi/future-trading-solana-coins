@@ -130,16 +130,18 @@ async def test_a_gap_makes_a_new_baseline(fresh_db: str) -> None:
     assert res.baseline and res.opens == 0
 
 
-async def test_tracked_owner_open_and_close_become_signals(fresh_db: str) -> None:
+async def test_the_scout_records_a_tracked_owners_trade_but_writes_no_signal(fresh_db: str) -> None:
+    """D-30: signals come from the trader's own feed (trading/watch.py). The scout still counts the open and turns
+    the close into an episode for grading."""
     async with store.session() as conn:
         await conn.execute("INSERT INTO wallets (address, source, tier, tracked) VALUES ('OWN', 'jupiter', 'GOLD', 1)")
     await jupiter.process_updates([], {}, now=T)
-    await jupiter.process_updates([pos("A", opened=T + 30, updated=T + 30)], {"SOL": 100.0}, now=T + 60)
-    await jupiter.process_updates([pos("A", size=0, updated=T + 90)], {"SOL": 100.0}, now=T + 120)
+    opened = await jupiter.process_updates([pos("A", opened=T + 30, updated=T + 30)], {"SOL": 100.0}, now=T + 60)
+    closed = await jupiter.process_updates([pos("A", size=0, updated=T + 90)], {"SOL": 100.0}, now=T + 120)
+    assert (opened.opens, closed.closes, closed.episodes) == (1, 1, 1)
     async with store.session() as conn:
-        async with conn.execute("SELECT kind, source, coin, side FROM signals ORDER BY id") as cur:
-            rows = [tuple(r) for r in await cur.fetchall()]
-    assert rows == [("OPEN", "jupiter", "SOL", "long"), ("CLOSE", "jupiter", "SOL", "long")]
+        async with conn.execute("SELECT COUNT(*) AS n FROM signals") as cur:
+            assert (await cur.fetchone())["n"] == 0  # type: ignore[index]
 
 
 async def test_dust_is_ignored(fresh_db: str) -> None:

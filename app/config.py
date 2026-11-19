@@ -38,6 +38,7 @@ SECRET_KEYS = (
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_CHAT_ID",
     "SOLANA_RPC_URL",
+    "SOLANA_WS_URL",
     "HEARTBEAT_URL",
 )
 
@@ -59,7 +60,11 @@ def _blank_if_unset(v: str) -> str:
 class Settings(BaseSettings):
     # ── Environment ───────────────────────────────────────────────────────────────────────
     aws_region: str = Field(default="eu-central-1", alias="AWS_REGION")
+    # The database the RUNNING program writes. Since D-30 each program sets it to its own file at start
+    # (`runtime.use_db`): the scout -> SCOUT_DB_PATH, the trader -> TRADER_DB_PATH. Tools default to the trader's.
     db_path: str = Field(default="data/solana-future-coin.db", alias="DB_PATH")
+    scout_db_path: str = Field(default="data/scout.db", alias="SCOUT_DB_PATH")
+    trader_db_path: str = Field(default="data/solana-future-coin.db", alias="TRADER_DB_PATH")
     report_dir: str = Field(default="data/reports", alias="REPORT_DIR")
     # Parquet files the recorder writes; the host timer `solana-future-coin-spool` moves them to the shared bucket.
     spool_dir: str = Field(default="data/spool", alias="SPOOL_DIR")
@@ -236,7 +241,21 @@ class Settings(BaseSettings):
     risk_loop_seconds: float = Field(default=5.0, ge=1.0, alias="RISK_LOOP_SECONDS")
     cold_loop_seconds: float = Field(default=60.0, ge=5.0, alias="COLD_LOOP_SECONDS")
     reconcile_seconds: float = Field(default=60.0, ge=10.0, alias="RECONCILE_SECONDS")
-    health_port: int = Field(default=8080, alias="HEALTH_PORT")
+    scout_health_port: int = Field(default=8080, alias="SCOUT_HEALTH_PORT")
+    trader_health_port: int = Field(default=8081, alias="TRADER_HEALTH_PORT")
+
+    # ── Trader feed (D-30): Solana websocket push for the copy list, the poll as the safety net ────────────────
+    # wss URL with the Chainstack key inside: a SECRET. Empty = derived from SOLANA_RPC_URL (https -> wss, same host and
+    # key path on a Chainstack Global Node, docs.chainstack.com read 2026-11-18).
+    solana_ws_url: str = Field(default="", alias="SOLANA_WS_URL")
+    # One programSubscribe per copy-list owner (filters are AND only); tracked owners first. Owners above the cap are
+    # watched by the poll only.
+    solana_ws_max_subscriptions: int = Field(default=100, ge=0, alias="SOLANA_WS_MAX_SUBSCRIPTIONS")
+    # getMultipleAccounts on the listed owners' known Position accounts: catches what the socket missed.
+    feed_poll_seconds: float = Field(default=30.0, ge=10.0, alias="FEED_POLL_SECONDS")
+    # The trader refuses new opens (LIST_STALE) when the scout's last pick is older than this; exits continue.
+    copylist_max_age_s: float = Field(default=600.0, gt=0.0, alias="COPYLIST_MAX_AGE_S")
+    copylist_refresh_s: float = Field(default=60.0, ge=5.0, alias="COPYLIST_REFRESH_S")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
 
@@ -264,6 +283,7 @@ class Settings(BaseSettings):
         "telegram_chat_id",
         "heartbeat_url",
         "solana_rpc_url",
+        "solana_ws_url",
         mode="before",
     )
     @classmethod
@@ -321,6 +341,15 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _two_programs_two_files(self) -> "Settings":
+        """D-30: each program writes its own file; one file for both would let two writers fight over one database."""
+        if os.path.abspath(self.scout_db_path) == os.path.abspath(self.trader_db_path):
+            raise ValueError("SCOUT_DB_PATH and TRADER_DB_PATH must be different files")
+        if self.copylist_max_age_s < 2 * self.jupiter_grade_minutes * 60:
+            raise ValueError("COPYLIST_MAX_AGE_S must cover at least two picks (2 x JUPITER_GRADE_MINUTES)")
+        return self
+
+    @model_validator(mode="after")
     def _digest_divides_a_day(self) -> "Settings":
         if 1440 % self.digest_minutes:
             raise ValueError(f"DIGEST_MINUTES={self.digest_minutes} must divide 1440 (windows are aligned to midnight)")
@@ -352,6 +381,18 @@ class Settings(BaseSettings):
     @property
     def telegram_enabled(self) -> bool:
         return bool(self.telegram_bot_token and self.telegram_chat_id)
+
+    @property
+    def ws_url(self) -> str:
+        """The Solana websocket URL: SOLANA_WS_URL, else SOLANA_RPC_URL with https -> wss (never logged: a key)."""
+        if self.solana_ws_url:
+            return self.solana_ws_url
+        url = self.solana_rpc_url
+        if url.startswith("https://"):
+            return "wss://" + url[len("https://") :]
+        if url.startswith("http://"):
+            return "ws://" + url[len("http://") :]
+        return url
 
 
 settings = Settings()

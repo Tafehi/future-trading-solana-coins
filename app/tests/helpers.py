@@ -1,8 +1,55 @@
 """Builders shared by tests: contracts, books and fake clients (ported from ai-kucoin-future, extended)."""
 
+import base64
+import json
+import sqlite3
+import struct
+from contextlib import closing
+from pathlib import Path
 from typing import Any
 
+from app.config import settings
+from app.data.jupiter_perps import SOURCE
 from app.data.kucoin import Contract, OrderBook
+from app.db import crossread
+from app.db.crossread import Entry
+from app.trading.copylist import CopyList
+
+_FIXTURES = Path(__file__).with_name("fixtures")
+
+
+def position_account(owner_byte: int, *, size_usd: float = 5000.0, price: float = 150.0, opened: int = 1_800_000_000,
+                     updated: int | None = None) -> bytes:  # fmt: skip
+    """A whole 216-byte Jupiter Position account (SOL long): a real mainnet account from the fixtures with its owner
+    (32 x `owner_byte`), times, price and size rewritten, so no real address is typed into a test."""
+    template = base64.b64decode(json.loads((_FIXTURES / "jupiter_positions.json").read_text())["accounts"][0]["data"])
+    raw = bytearray(template)
+    raw[8:40] = bytes([owner_byte]) * 32
+    struct.pack_into("<qq", raw, 136, opened, opened if updated is None else updated)
+    struct.pack_into("<QQ", raw, 153, int(price * 1_000_000), int(size_usd * 1_000_000))
+    return bytes(raw)
+
+
+class TableCopyList(CopyList):
+    """Test stand-in for the trader's copy list: every get() reads the test database's tracked / watched `wallets`
+    rows, so a test can add a wallet at any point, and the list is always fresh. The real list is the scout's pick,
+    read once a minute (`crossread.copy_list`); its age rule (LIST_STALE) is tested in test_copylist.py."""
+
+    def age(self, now: float) -> float | None:
+        return 0.0
+
+    def stale(self, now: float) -> bool:
+        return False
+
+    def get(self, address: str) -> Entry | None:
+        with closing(sqlite3.connect(settings.db_path)) as c:
+            c.row_factory = sqlite3.Row
+            r = c.execute(
+                f"SELECT {crossread.ENTRY_COLUMNS} FROM wallets WHERE address = ? AND source = ? "  # noqa: S608
+                "AND (tracked = 1 OR watched = 1)",
+                (address, SOURCE),
+            ).fetchone()
+        return None if r is None else crossread.entry_of(r)
 
 
 def contract(

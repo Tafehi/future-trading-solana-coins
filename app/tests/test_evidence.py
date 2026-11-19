@@ -74,3 +74,30 @@ def test_the_database_is_opened_read_only(tmp_path: Path) -> None:
     with pytest.raises(sqlite3.OperationalError, match="readonly"):
         conn.execute("DELETE FROM positions")
     conn.close()
+
+
+def test_two_files_the_pool_comes_from_the_scout(tmp_path: Path) -> None:
+    """D-30: the trader's file keeps an old `wallets` table that nobody updates; with --scout-db the pool and the
+    shadow record use the scout's wallets, and the scout's tables land as scout-<table>.csv."""
+    trader = _db(tmp_path)
+    c = sqlite3.connect(trader)
+    c.execute("UPDATE wallets SET tracked = 0")  # the stale copy in the trader's file
+    c.commit()
+    c.close()
+    scout = str(tmp_path / "scout.db")
+    c = sqlite3.connect(scout)
+    c.executescript(
+        "CREATE TABLE wallets (address TEXT PRIMARY KEY, source TEXT, tier TEXT, tracked INTEGER, watched INTEGER);"
+        "INSERT INTO wallets VALUES ('0xa', 'jupiter', 'GOLD', 1, 0);"
+    )
+    c.commit()
+    c.close()
+    counts = er.run(trader, str(tmp_path / "out"), scout_db=scout, now=T)
+    assert counts["scout-wallets"] == 1 and counts["wallets"] == 3
+    md = (tmp_path / "out" / "summary.md").read_text()
+    assert "| jupiter | GOLD | 1 | 1 | 0 |" in md  # the scout's pool, not the stale one
+    assert "| jupiter | GOLD | 0xa | 1 | 2 | 1 | -2.00 |" in md  # joined with the trader's shadow copies
+    with pytest.raises(sqlite3.OperationalError):
+        conn = er.connect_ro(trader)
+        conn.execute("ATTACH DATABASE ? AS scout", (f"file:{scout}?mode=ro",))
+        conn.execute("DELETE FROM scout.wallets")  # attached read-only too

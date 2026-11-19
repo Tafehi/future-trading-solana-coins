@@ -35,6 +35,7 @@ CUSTODY_COIN = {
     "5Pv3gM9JrFFH883SWAhvJC9RPYmo8UNxuFtv5bMMALkm": "BTC",
 }
 SIDES = {1: "long", 2: "short"}
+SOURCE = "jupiter"  # the `source` of every Jupiter wallet and signal row (shared by the scout and the trader, D-30)
 
 _B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
@@ -83,6 +84,15 @@ def decode_slice(pubkey: str, data: bytes) -> JupPosition | None:
     owner = b58encode(data[0:32])
     return JupPosition(pubkey, owner, coin, side, size / USD_DECIMALS, price / USD_DECIMALS, int(open_time),
                        int(update_time))  # fmt: skip
+
+
+def decode_account(pubkey: str, data: bytes) -> JupPosition | None:
+    """A WHOLE Position account (216 bytes, as a websocket notification carries it) -> the position, or None when it is
+    not a Position account: the size and the Anchor discriminator must match (a programSubscribe filter on size alone
+    could let another 216-byte account type through)."""
+    if len(data) != ACCOUNT_SIZE or data[:8] != discriminator():
+        return None
+    return decode_slice(pubkey, data[SLICE_OFFSET : SLICE_OFFSET + SLICE_LENGTH])
 
 
 def block_of(ts: float) -> int:

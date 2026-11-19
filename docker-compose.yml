@@ -1,17 +1,27 @@
-# The solana-future-coin bot on the EC2 box. One container. `ECR_REGISTRY` comes from the systemd unit (solana-future-coin.service).
+# The solana-future-coin bot on the EC2 box: TWO programs from ONE image (D-30). `ECR_REGISTRY` comes from the
+# systemd unit (solana-future-coin.service), which runs `docker-compose up -d --remove-orphans`: the old single
+# `solana-future-coin` container (service `bot`) is removed by --remove-orphans on the first start of this file.
 #
+# - scout  : finds, records, grades and picks wallets; writes data/scout.db; never trades, never sends Telegram.
+# - trader : websocket feed, copies, exits, ledger, Telegram; writes data/solana-future-coin.db (the paper account).
+# - `entrypoint:`, NEVER `command:` (LESSON L-14): a command is appended to the image's ENTRYPOINT as arguments; with
+#   an old image that would start the whole old bot twice. With `entrypoint:` an old image fails fast instead
+#   ("No module named app.scout") until the update timer pulls the new one.
 # - Health binds 127.0.0.1 only: nothing on the box listens on a public interface (statusCheck.sh section 0).
 # - .env holds the solana-future-bot secret, rendered hourly by solana-future-coin-env.timer; never baked into the image.
-# - data/ holds the SQLite database, the Parquet spool and the STOP kill-switch file.
+# - data/ (shared) holds both SQLite files, the Parquet spool and the STOP kill-switch file (read by the trader).
 services:
-  bot:
+  scout:
     image: ${ECR_REGISTRY}/solana-future-coin:latest
-    container_name: solana-future-coin
+    container_name: solana-future-coin-scout
+    entrypoint: ["python", "-m", "app.scout"]
     restart: unless-stopped
+    stop_grace_period: 30s
     env_file: /opt/solana-future-coin/.env
     environment:
       AWS_REGION: eu-central-1
-      LOG_DIR: /app/logs
+      LOG_DIR: /app/logs/scout
+      HEALTH_URL: http://127.0.0.1:8080/health
     volumes:
       - /opt/solana-future-coin/data:/app/data
       - /opt/solana-future-coin/logs/app:/app/logs
@@ -21,9 +31,38 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    # t4g.micro has 1 GB; the bot uses ~150-300 MB (pyarrow; no Hyperliquid leaderboard since the split).
-    mem_limit: 700m
-    memswap_limit: 700m
+    # t4g.micro has 1 GB (+1 GB swap). Estimates, not measured yet (BUG B-16): grading + pyarrow.
+    mem_limit: 450m
+    memswap_limit: 450m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  trader:
+    image: ${ECR_REGISTRY}/solana-future-coin:latest
+    container_name: solana-future-coin-trader
+    entrypoint: ["python", "-m", "app.trader"]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file: /opt/solana-future-coin/.env
+    environment:
+      AWS_REGION: eu-central-1
+      LOG_DIR: /app/logs/trader
+      HEALTH_URL: http://127.0.0.1:8081/health
+    volumes:
+      - /opt/solana-future-coin/data:/app/data
+      - /opt/solana-future-coin/logs/app:/app/logs
+    ports:
+      - "127.0.0.1:8081:8081"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Estimate (BUG B-16): the feed, the copier and the recorder (pyarrow).
+    mem_limit: 300m
+    memswap_limit: 300m
     logging:
       driver: json-file
       options:

@@ -6,6 +6,10 @@ silently: foreign keys are simply not enforced.
 
 WAL lets the hot path read while the cold path writes grades. `busy_timeout` makes a colliding writer
 wait instead of raising `database is locked`.
+
+Two programs since D-30 (2026-11-18): the scout writes `data/scout.db`, the trader `data/solana-future-coin.db`. A
+program reads the OTHER program's file only with `read_only=True` (SQLite URI `mode=ro`): such a connection can never
+write, never creates a missing file (it raises instead), and sets no journal mode. Only `app/db/crossread.py` does that.
 """
 
 import os
@@ -27,9 +31,15 @@ def _ensure_parent_dir(path: str) -> None:
     os.makedirs(parent, exist_ok=True)
 
 
-async def connect(db_path: str | None = None) -> aiosqlite.Connection:
+async def connect(db_path: str | None = None, *, read_only: bool = False) -> aiosqlite.Connection:
     """Open a connection with this project's pragmas applied. The only way to open the database."""
     path = db_path or settings.db_path
+    if read_only:
+        # mode=ro: no write, and a missing file is an error (it is never created by a reader).
+        conn = await aiosqlite.connect(f"file:{os.path.abspath(path)}?mode=ro", uri=True)
+        conn.row_factory = aiosqlite.Row
+        await conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+        return conn
     _ensure_parent_dir(path)
 
     conn = await aiosqlite.connect(path)
@@ -44,17 +54,20 @@ async def connect(db_path: str | None = None) -> aiosqlite.Connection:
 
 
 @asynccontextmanager
-async def session(db_path: str | None = None) -> AsyncIterator[aiosqlite.Connection]:
+async def session(db_path: str | None = None, *, read_only: bool = False) -> AsyncIterator[aiosqlite.Connection]:
     """Connection as a context manager. Commits on clean exit, rolls back on an exception.
 
-    A batch that dies halfway must not leave partial evidence that the next run reads as complete.
+    A batch that dies halfway must not leave partial evidence that the next run reads as complete. A read-only
+    session never commits (there is nothing to commit; it only closes).
     """
-    conn = await connect(db_path)
+    conn = await connect(db_path, read_only=read_only)
     try:
         yield conn
-        await conn.commit()
+        if not read_only:
+            await conn.commit()
     except BaseException:
-        await conn.rollback()
+        if not read_only:
+            await conn.rollback()
         raise
     finally:
         await conn.close()

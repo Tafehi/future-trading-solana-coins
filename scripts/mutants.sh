@@ -61,7 +61,7 @@ mut app/trading/futures_paper.py 'if round(price_move_pct(side, entry, mark), RO
 mut app/record/recorder.py 'del rows[: len(rows) - MAX_BUFFER_ROWS]' 'pass' 'failing_spool'
 mut app/record/recorder.py 'os.replace(path + ".tmp", path)' 'pass' 'shared_bucket_layout'
 mut app/settings.toml 'JUPITER_GRADE_MINUTES = 5.0' 'JUPITER_GRADE_MINUTES = 60.0' 'settings_file_loads'
-mut app/main.py 'claim("jupiter_grade", interval_s=settings.jupiter_grade_minutes * 60)' 'claim("jupiter_grade", interval_s=3600)' 'wallet_list_intervals'
+mut app/scout.py 'claim("jupiter_grade", interval_s=settings.jupiter_grade_minutes * 60)' 'claim("jupiter_grade", interval_s=3600)' 'wallet_list_intervals'
 
 # Items 1-5 (2026-11-13, more wallets)
 mut app/data/jupiter_events.py 'digest()[:8][::-1]' 'digest()[:8]' 'event_tag or real_close'
@@ -79,7 +79,7 @@ mut app/core/selection.py 'c.shadow_n >= settings.shadow_min_trades
         and c.shadow_mean <= settings' 'proven_first'
 mut app/core/selection.py 'if silver >= max_silver:' 'if silver > max_silver:' 'silver_cap'
 mut app/trading/copier.py 'weight = min(weight, settings.silver_max_weight)' 'pass' 'silver_is_copied'
-mut app/trading/copier.py 'if not w["tracked"]:' 'if False:' 'watched_wallet_gets'
+mut app/trading/copier.py 'if not w.tracked:' 'if False:' 'watched_wallet_gets'
 mut app/trading/shadow.py 'return -100.0 / settings.leverage' 'return -100.0' 'net_return'
 
 # The split (2026-11-14, D-19): the bot names itself in Telegram, records into its own folders, maps Jupiter's coins.
@@ -90,7 +90,7 @@ mut app/config.py '        if not self.kucoin_key_dedicated:' '        if False:
 mut app/core/golive.py '            settings.kucoin_key_dedicated,' '            True,' 'reminds_about_the_shared_key'
 mut app/tools/evidence_report.py 'f"file:{db}?mode=ro"' 'f"file:{db}?mode=rw"' 'read_only'
 mut app/tools/evidence_report.py 'SUM(net_pnl > 0) AS won' 'SUM(net_pnl >= -100) AS won' 'summary_adds_up'
-mut app/main.py 'add_rows("solana-bot/grades"' 'add_rows("grades"' 'solana_bot_folders'
+mut app/scout.py 'add_rows("solana-bot/grades"' 'add_rows("grades"' 'solana_bot_folders'
 mut app/data/market.py 'coins = sorted(JUPITER_COINS)' 'coins = sorted(JUPITER_COINS)[1:]' 'jupiter_coins_map'
 
 # 2026-11-16: Jupiter wallet history exported once each
@@ -130,8 +130,65 @@ mut $JH 'replaced = ("feed", "api", "chain") if origin' 'replaced = ("feed",) if
 mut $JH 'history_from = since if hist.complete else max(since, oldest)' 'history_from = max(since, oldest)' 'replaces_feed_and_chain'
 mut $JH 'next_owners(settings.jupiter_history_owners_per_pass)' 'next_owners(20)' 'owners_per_pass'
 mut app/db/migrations.py 'UPDATE jup_owners SET backfilled_at = NULL WHERE backfilled_at IS NOT NULL;' '' 'migration_3'
-# 2026-11-18: /health watches exactly the loops main.py runs (DEBUG D-11)
-mut app/api/health.py '"jupiter": 300, "jhistory": 600}' '"jupiter": 300, "jhistory": 600, "poll": 300}' 'exactly_the_loops or every_loop_beat'
+# 2026-11-18: /health watches exactly the loops each program runs (DEBUG D-11; per program since D-30)
+mut app/api/health.py '"grade": 600, "cold": 600}' '"grade": 600, "cold": 600, "poll": 300}' 'exactly_the_loops'
+mut app/api/health.py '"feedpoll": 300}' '"feedpoll": 300, "discovery": 300}' 'exactly_the_loops'
+# 2026-11-19 (D-30): scout + trader, the websocket feed, the copy list. Boundaries AT the value.
+W=app/trading/watch.py
+mut $W 'fresh = now - p.open_time <= settings.signal_max_age_s' 'fresh = now - p.open_time < settings.signal_max_age_s' 'freshness_at_its_boundary'
+mut $W '        if prev.same_as(p):' '        if False:' 'duplicate_on_any_slot'
+mut $W '        if (p.update_time, obs.slot) < prev.order:' '        if False:' 'never_moves_back'
+mut $W 'was_open = prev is not None and prev.size_usd >= minimum' 'was_open = prev is not None and prev.size_usd > minimum' 'exactly_the_minimum_is_not_a_second_open'
+mut $W 'if p.is_open and p.size_usd >= minimum and not was_open and fresh:' 'if p.is_open and p.size_usd > minimum and not was_open and fresh:' 'size_at_the_minimum'
+mut $W '(not p.is_open or p.open_time != prev.open_time)' '(not p.is_open)' 'closed_and_opened_again'
+mut $W '                if entry is None:' '                if False:' 'off_the_list'
+mut $W '        self.states[obs.pubkey] = new' '        pass' 'websocket_then_poll'
+mut app/db/migrations.py 'CREATE UNIQUE INDEX IF NOT EXISTS signals_once' 'CREATE INDEX IF NOT EXISTS signals_once' 'restart_never_signals_twice'
+CL=app/trading/copylist.py
+mut $CL 'return age is None or age > settings.copylist_max_age_s' 'return age is None or age >= settings.copylist_max_age_s' 'list_age_at_its_limit'
+mut $CL 'return age is None or age > settings.copylist_max_age_s' 'return False or age > settings.copylist_max_age_s' 'list_age_at_its_limit'
+mut $CL 'key=lambda e: (not e.tracked, -e.rank_score, e.address)' 'key=lambda e: (-e.rank_score, e.address)' 'ranks_tracked_first'
+mut app/trading/copier.py '        if self.copylist.stale(at):' '        if False:' 'refuses_by_the_list'
+mut app/trading/copier.py 'if w is None or w.tier not in tiers:' 'if w is None:' 'refuses_by_the_list'
+mut app/db/crossread.py '    async with store.session(scout_db, read_only=True) as conn:
+        await conn.execute("BEGIN")' '    async with store.session(scout_db) as conn:
+        await conn.execute("BEGIN")' 'never_created'
+mut app/db/store.py '?mode=ro", uri=True)' '?mode=rwc", uri=True)' 'refuses_to_write or never_created'
+mut $JU 'read_only=shadow_db is not None, now=at)' 'read_only=False, now=at)' 'keeps_the_old_pick'
+mut $JU '        await meta.put(conn, PICKED_AT_KEY, at, now=at)' '        pass' 'writes_its_time'
+mut $JU '        raise ShadowUnreadable(f"shadow record unreadable ({type(exc).__name__}); the pick is kept") from exc' '        shadows = {}' 'keeps_the_old_pick'
+mut app/scout.py '            await jobclock.schedule("jupiter_grade", jupiter.SHADOW_RETRY_S)' '            pass' 'retries_an_unreadable'
+mut app/scout.py 'from app.api import health
+' 'from app.api import health
+from app.trading import ledger  # noqa: F401
+' 'scout_loads_no_trading'
+mut app/trader.py '                    self.wake.set()' '                    pass' 'copies_an_open_its_poll_sees'
+WS=app/data/solana_ws.py
+mut $WS '                self._reset(None)' '                self._sock = None' 'subscribes_every_owner_again'
+mut $WS 'if opened_at is not None and self._clock() - opened_at >= STABLE_S:' 'if opened_at is not None and self._clock() - opened_at > STABLE_S:' 'stable_minute'
+mut $WS '            backoff = min(MAX_BACKOFF_S, backoff * 2)' '            backoff = backoff * 2' 'doubles_to_sixty'
+mut $WS '                await asyncio.wait_for(waiter, self.pong_timeout_s)' '                await asyncio.sleep(0)' 'missing_pong'
+mut $WS '                    logger.warning("ws: %s", why(exc))' '                    logger.warning("ws: %s", exc)' 'url_never_reaches'
+mut $WS '            await self._unsubscribe(result)  # dropped' '            pass  # dropped' 'dropped_while_its_subscribe'
+mut $WS '        if pos is None or pos.owner != owner:' '        if pos is None:' 'discriminator_or_owner'
+mut app/data/jupiter_perps.py 'if len(data) != ACCOUNT_SIZE or data[:8] != discriminator():' 'if len(data) != ACCOUNT_SIZE:' 'discriminator_or_owner'
+HE=app/api/health.py
+mut $HE '    if list_age is None or list_age > settings.copylist_max_age_s:' '    if list_age is not None and list_age > settings.copylist_max_age_s:' 'copy_list_age_at_its_limit'
+mut $HE 'and down is not None and down > FEED_DOWN_LIMIT_S:' 'and down is not None and down >= FEED_DOWN_LIMIT_S:' 'websocket_down_at_its_limit'
+mut $HE '(pick_age is None or pick_age > settings.copylist_max_age_s)' '(pick_age is None or pick_age >= settings.copylist_max_age_s)' 'pick_age_at_the_copy_list_limit'
+mut $HE '    if not worker_alive:' '    if False:' 'dead_feed_worker'
+mut app/config.py 'if os.path.abspath(self.scout_db_path) == os.path.abspath(self.trader_db_path):' 'if self.scout_db_path == self.trader_db_path:' 'one_file_for_both'
+mut app/config.py 'if self.copylist_max_age_s < 2 * self.jupiter_grade_minutes * 60:' 'if self.copylist_max_age_s <= 2 * self.jupiter_grade_minutes * 60:' 'cover_two_picks'
+mut app/runtime.py '        waits.append(asyncio.ensure_future(wake.wait()))' '        pass' 'wake_starts_the_next_pass'
+# The scout's one-time owner seed (a fresh scout.db must not forget the single bot's 1,331 owners)
+mut app/scout.py '        await jupiter.seed_owners(settings.trader_db_path)' '        pass' 'seeds_at_boot'
+mut app/db/crossread.py '    async with store.session(trader_db, read_only=True) as conn:
+        async with conn.execute("SELECT owner, first_seen' '    async with store.session(trader_db) as conn:
+        async with conn.execute("SELECT owner, first_seen' 'seeds_nothing'
+mut $JU 'SET first_seen = MIN(jup_owners.first_seen, excluded.first_seen), ' 'SET first_seen = excluded.first_seen, ' 'seeds_the_owner_list_once'
+mut $JU 'excluded.first_seen), "
+            "max_open_usd = MAX(jup_owners.max_open_usd, excluded.max_open_usd)",' 'excluded.first_seen), "
+            "max_open_usd = excluded.max_open_usd",' 'seeds_the_owner_list_once'
 # 2026-11-17: the Chainstack key in SOLANA_RPC_URL is masked in logs
 mut app/utils/logging.py '(re.compile(r"(\.chainstack\.com/)[A-Za-z0-9_-]+"), r"\1***"),' '' 'chainstack_key'
 
